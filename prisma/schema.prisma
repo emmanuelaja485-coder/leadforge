@@ -1,0 +1,90 @@
+// LeadForge — Lead Generation & Pipeline CRM
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  name           String
+  company        String?
+  email          String?
+  phone          String?
+  website        String?
+  location       String?
+  industry       String?
+  companySize   String?
+  snippet        String?
+  // AI / Gemini fields
+  score          Int      @default(0) // 0-100
+  geminiVerified Boolean  @default(false)
+  geminiSummary  String?
+  geminiAngle    String?
+  geminiWarnings String?
+  portfolioJson  String? // JSON string of portfolio data
+  // Pipeline
+  status         String   @default("new") // new | contacted | qualified | won | lost
+  source         String   @default("web_search")
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastContactedAt DateTime?
+
+  messages       Message[]
+  tasks          Task[]
+  automationLogs AutomationLog[]
+
+  @@index([status])
+  @@index([location])
+  @@index([industry])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String // cold_email | linkedin | followup | whatsapp | pitch
+  content   String
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model Task {
+  id        String   @id @default(cuid())
+  leadId    String
+  title     String
+  type      String // followup | call | meeting | research
+  dueDate   DateTime?
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model AutomationRule {
+  id        String   @id @default(cuid())
+  name      String
+  type      String // auto_enrich | auto_advance_status | auto_followup_task
+  enabled   Boolean  @default(true)
+  configJson String? // JSON config
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  logs      AutomationLog[]
+}
+
+model AutomationLog {
+  id        String   @id @default(cuid())
+  ruleId    String?
+  leadId    String?
+  action    String
+  detail    String?
+  createdAt DateTime @default(now())
+  rule      AutomationRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  lead      Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
