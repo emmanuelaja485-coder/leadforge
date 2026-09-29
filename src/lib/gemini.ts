@@ -13,9 +13,12 @@
  *
  * The `usedFallback` flag in the response indicates when the ZAI fallback was
  * used so the UI can surface this to the user.
+ *
+ * NOTE: ZAI is now called via direct HTTP (see src/lib/lead-search.ts) so it
+ * works on Cloudflare's edge runtime. The z-ai-web-dev-sdk is no longer used.
  */
 
-import ZAI from "z-ai-web-dev-sdk";
+import { zaiChatCompletion } from "@/lib/lead-search";
 
 const GEMINI_MODEL = "gemini-3.8-flash";
 const GEMINI_ENDPOINT = (key: string) =>
@@ -26,42 +29,6 @@ export interface GeminiResponse {
   usedMock: boolean;
   usedFallback?: boolean; // true when ZAI chat was used instead of Gemini
   error?: string;
-}
-
-let zaiInstance: ZAI | null = null;
-async function getZAI(): Promise<ZAI> {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create();
-  }
-  return zaiInstance;
-}
-
-/**
- * Fallback: use ZAI's chat completions API when Gemini is unavailable.
- * ZAI is pre-configured via .z-ai-config and works in any region.
- */
-async function callZAIChat(
-  prompt: string,
-  systemPrompt?: string
-): Promise<string> {
-  try {
-    const zai = await getZAI();
-    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
-    if (systemPrompt) {
-      messages.push({ role: "system", content: systemPrompt });
-    }
-    messages.push({ role: "user", content: prompt });
-
-    const completion: any = await zai.chat.completions.create({
-      messages,
-      thinking: { type: "disabled" },
-    });
-
-    const text = completion?.choices?.[0]?.message?.content ?? "";
-    return typeof text === "string" ? text.trim() : String(text);
-  } catch (err: any) {
-    return "";
-  }
 }
 
 export async function callGemini(
@@ -115,7 +82,7 @@ export async function callGemini(
 
     // Gemini returned an error — try the ZAI fallback
     const errText = await resp.text().catch(() => "");
-    const zaiText = await callZAIChat(prompt, systemPrompt);
+    const zaiText = await zaiChatCompletion(prompt, systemPrompt);
     if (zaiText) {
       return {
         text: zaiText,
@@ -131,7 +98,7 @@ export async function callGemini(
     };
   } catch (err: any) {
     // Network / runtime error — try the ZAI fallback
-    const zaiText = await callZAIChat(prompt, systemPrompt);
+    const zaiText = await zaiChatCompletion(prompt, systemPrompt);
     if (zaiText) {
       return {
         text: zaiText,

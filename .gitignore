@@ -65,3 +65,4 @@ db/
 # Cloudflare wrangler
 .wrangler/
 .dev.vars
+.vercel/
