@@ -103,18 +103,65 @@ export async function POST(
     );
     portfolio.phones = extractAll(/(\+?\d[\d\s\-().]{7,}\d)/g, text);
     portfolio.socials = detectSocials(page.html);
-    portfolio.companyInfo.keywords = Array.from(
-      new Set(
-        (text
-          .toLowerCase()
-          .match(/\b(shopify|woocommerce|ecommerce|saas|agency|fashion|beverage|cosmetics|fitness|tech|retail|wholesale|b2b|d2c|subscription|apparel|jewelry|home|food|wellness)\b/g) || [])
-      )
-    ).slice(0, 8);
+    // Keywords adapt to author vs ecom niche
+    if (lead.leadType === "author") {
+      portfolio.companyInfo.keywords = Array.from(
+        new Set(
+          (text
+            .toLowerCase()
+            .match(/\b(novel|memoir|fiction|nonfiction|debut|bestseller|literary|fantasy|romance|thriller|mystery|historical|young adult|poetry|short story|series|book|author|publisher|indie|self-published|traditionally published|literary agent)\b/g) || [])
+        )
+      ).slice(0, 8);
+    } else {
+      portfolio.companyInfo.keywords = Array.from(
+        new Set(
+          (text
+            .toLowerCase()
+            .match(/\b(shopify|woocommerce|ecommerce|saas|agency|fashion|beverage|cosmetics|fitness|tech|retail|wholesale|b2b|d2c|subscription|apparel|jewelry|home|food|wellness)\b/g) || [])
+        )
+      ).slice(0, 8);
+    }
     portfolio.projects = extractProjects(page.html, lead.website);
   }
 
+  const isAuthor = lead.leadType === "author";
+
   // 2. Run Gemini: validate + score + summarize using portfolio data
-  const validationPrompt = `Validate this lead based on portfolio data.
+  // For authors, add a 4th call to extract book info
+  let authorRes: any = { text: "", usedMock: true };
+  if (isAuthor) {
+    const authorPrompt = `You are a literary research assistant. From the page content below, extract the author's identity, most recent or featured book, and a specific concrete detail that could be referenced in outreach.
+
+Source URL: ${lead.website}
+Site title: ${portfolio.siteTitle}
+Description: ${portfolio.description}
+Page excerpt:
+${portfolio.description.slice(0, 3000)}
+
+Return STRICT JSON only:
+{
+  "authorName": string | null,
+  "bookTitle": string | null,
+  "bookGenre": string | null,
+  "bookThemes": [string],
+  "bookHook": string,  // a specific concrete detail — a character name, opening line, distinctive plot device, signature theme, or stylistic choice. Must be specific enough to feel like you read the book.
+  "authorBio": string | null
+}`;
+    authorRes = await callGemini(geminiKey, authorPrompt, "You are a literary research assistant. Always return strict JSON only.");
+  }
+
+  const validationPrompt = isAuthor
+    ? `Validate this as a real, contactable author lead (an actual published author with a website).
+
+Author: ${lead.name} — ${lead.website}
+Emails found: ${portfolio.emails.join(", ") || "none"}
+Site title: ${portfolio.siteTitle}
+Description excerpt: ${portfolio.description.slice(0, 800)}
+Socials: ${portfolio.socials.map((s) => `${s.type}:${s.url}`).join(", ") || "none"}
+
+Return STRICT JSON only:
+{ "valid": boolean, "confidence": number 0-100, "warnings": [string], "notes": string }`
+    : `Validate this lead based on portfolio data.
 
 Lead: ${lead.name} — ${lead.website}
 Emails found: ${portfolio.emails.join(", ") || "none"}
@@ -125,7 +172,17 @@ Socials: ${portfolio.socials.map((s) => `${s.type}:${s.url}`).join(", ") || "non
 Return STRICT JSON only:
 { "valid": boolean, "confidence": number 0-100, "warnings": [string], "notes": string }`;
 
-  const scorePrompt = `Score this lead 0-100 for B2B outreach potential to a services provider (marketing/dev/CRO services for e-commerce brands).
+  const scorePrompt = isAuthor
+    ? `Score this author lead 0-100 for outreach by a publishing services provider (book PR, marketing, design, rights services).
+
+Author: ${lead.name} — ${lead.website}
+Email present: ${portfolio.emails.length > 0}
+Socials present: ${portfolio.socials.length}
+Keywords: ${portfolio.companyInfo.keywords.join(", ")}
+
+Return STRICT JSON only:
+{ "score": number, "tier": "hot"|"warm"|"cold", "signals": [string], "rationale": string }`
+    : `Score this lead 0-100 for B2B outreach potential to a services provider (marketing/dev/CRO services for e-commerce brands).
 
 Lead: ${lead.name} — ${lead.website}
 Email present: ${portfolio.emails.length > 0}
@@ -135,7 +192,16 @@ Industry keywords: ${portfolio.companyInfo.keywords.join(", ")}
 Return STRICT JSON only:
 { "score": number, "tier": "hot"|"warm"|"cold", "signals": [string], "rationale": string }`;
 
-  const summaryPrompt = `Summarize this lead's portfolio and recommend an outreach angle.
+  const summaryPrompt = isAuthor
+    ? `Summarize this author lead and recommend an outreach angle that references their work.
+
+Author: ${lead.name} — ${lead.website}
+Description: ${portfolio.description.slice(0, 1000)}
+Keywords: ${portfolio.companyInfo.keywords.join(", ")}
+
+Return STRICT JSON only:
+{ "summary": string (2 sentences), "angle": string (1-sentence pitch recommendation that should feel book-literate) }`
+    : `Summarize this lead's portfolio and recommend an outreach angle.
 
 Lead: ${lead.name} — ${lead.website}
 Description: ${portfolio.description.slice(0, 1000)}
@@ -153,9 +219,13 @@ Return STRICT JSON only:
   let validJson: any = {};
   let scoreJson: any = {};
   let summaryJson: any = {};
+  let authorJson: any = {};
   try { validJson = JSON.parse(validRes.text.replace(/```json|```/g, "").trim()); } catch { /* empty */ }
   try { scoreJson = JSON.parse(scoreRes.text.replace(/```json|```/g, "").trim()); } catch { /* empty */ }
   try { summaryJson = JSON.parse(summaryRes.text.replace(/```json|```/g, "").trim()); } catch { /* empty */ }
+  if (isAuthor && authorRes.text) {
+    try { authorJson = JSON.parse(authorRes.text.replace(/```json|```/g, "").trim()); } catch { /* empty */ }
+  }
 
   const updated = await db.lead.update({
     where: { id },
@@ -168,12 +238,21 @@ Return STRICT JSON only:
       email: lead.email || portfolio.emails[0] || null,
       phone: lead.phone || portfolio.phones[0] || null,
       portfolioJson: JSON.stringify(portfolio),
+      // Author-specific updates
+      ...(isAuthor && authorJson ? {
+        bookTitle: authorJson.bookTitle || lead.bookTitle || null,
+        bookGenre: authorJson.bookGenre || lead.bookGenre || null,
+        bookThemes: Array.isArray(authorJson.bookThemes) ? JSON.stringify(authorJson.bookThemes) : lead.bookThemes,
+        bookHook: authorJson.bookHook || lead.bookHook || null,
+        authorBio: authorJson.authorBio || lead.authorBio || null,
+        name: authorJson.authorName || lead.name,
+      } : {}),
     },
     include: { messages: true, tasks: true },
   });
 
   await db.automationLog.create({
-    data: { leadId: id, action: "auto_enrich", detail: "Enriched lead portfolio + Gemini validation." },
+    data: { leadId: id, action: "auto_enrich", detail: isAuthor ? "Enriched author portfolio + book extraction + Gemini validation." : "Enriched lead portfolio + Gemini validation." },
   });
 
   return NextResponse.json({
@@ -183,8 +262,9 @@ Return STRICT JSON only:
       valid: validJson,
       score: scoreJson,
       summary: summaryJson,
-      usedMock: validRes.usedMock || scoreRes.usedMock || summaryRes.usedMock,
-      error: validRes.error || scoreRes.error || summaryRes.error,
+      author: authorJson,
+      usedMock: validRes.usedMock || scoreRes.usedMock || summaryRes.usedMock || (isAuthor && authorRes.usedMock),
+      error: validRes.error || scoreRes.error || summaryRes.error || (isAuthor ? authorRes.error : undefined),
     },
   });
 }

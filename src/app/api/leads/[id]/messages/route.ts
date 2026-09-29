@@ -18,7 +18,8 @@ export async function GET(
   return NextResponse.json({ messages });
 }
 
-const TYPE_LABELS: Record<string, { label: string; instructions: string }> = {
+// ---------- E-commerce message templates ----------
+const ECOM_LABELS: Record<string, { label: string; instructions: string }> = {
   cold_email: {
     label: "Cold Email Intro",
     instructions: `Write a first-touch cold email to {{name}} at {{company}} ({{website}}).
@@ -80,6 +81,97 @@ Rules:
   },
 };
 
+// ---------- Author-specific templates — all reference the book concretely ----------
+const AUTHOR_LABELS: Record<string, { label: string; instructions: string }> = {
+  cold_email: {
+    label: "Author Cold Email",
+    instructions: `Write a first-touch cold email to the author {{name}} about their book "{{bookTitle}}".
+
+Author context:
+- Website: {{website}}
+- Genre: {{bookGenre}}
+- Themes: {{bookThemes}}
+- Specific hook to reference: {{bookHook}}
+- Author bio: {{authorBio}}
+- Pitch angle: {{angle}}
+
+CRITICAL RULES (this is the most important part):
+- The first sentence MUST reference the specific hook above (a character name, opening line, plot device, theme, or stylistic choice) in a way that makes clear you actually read the book. Be specific — not generic flattery.
+- DO NOT say "I loved your book" or "your writing is amazing" — those feel like mass mail. Instead, name something concrete from the book.
+- Subject line on first line, prefixed "Subject: ".
+- 120-180 words.
+- Connect the hook to the service you're offering ({{angle}}) in 1-2 sentences.
+- Single soft CTA: a 10-min call or a free sample of work.
+- Sign off "[Your name]".
+- Plain text only, no markdown.`,
+  },
+  linkedin: {
+    label: "LinkedIn DM",
+    instructions: `Write a LinkedIn DM (connection request note + first message) to author {{name}} about their book "{{bookTitle}}".
+
+Author context:
+- Website: {{website}}
+- Genre: {{bookGenre}}
+- Specific hook to reference: {{bookHook}}
+- Pitch angle: {{angle}}
+
+RULES:
+- Connection request note: 1 line, max 200 chars, MUST name a specific detail from the book (the hook above).
+- Blank line.
+- First message: max 300 chars, conversational, follow up on that detail with one concrete observation, end with a soft question.
+- Sign "[Your name]".
+- Plain text only.`,
+  },
+  followup: {
+    label: "Follow-up #1",
+    instructions: `Write a polite follow-up email to author {{name}} about their book "{{bookTitle}}".
+
+Context: They didn't reply to your first message about {{angle}}. The hook you previously referenced was: {{bookHook}}.
+
+Rules:
+- 80-120 words.
+- Reference your previous note AND add ONE new specific observation about the book (a different angle on the same hook, or a related theme).
+- Low-pressure CTA: "Worth a 5-min look?".
+- Sign "[Your name]".
+- Plain text only.`,
+  },
+  whatsapp: {
+    label: "WhatsApp / SMS",
+    instructions: `Write a WhatsApp/SMS message to author {{name}} about their book "{{bookTitle}}".
+
+Specific hook to reference: {{bookHook}}
+Angle: {{angle}}
+
+Rules:
+- Under 200 characters total.
+- Conversational, lowercase-friendly.
+- Reference the specific hook concretely (e.g. "the bit where [specific detail]" or "the way [specific thing]").
+- One clear question.
+- Sign "[Your name]".
+- Plain text only.`,
+  },
+  pitch: {
+    label: "Pitch / Proposal",
+    instructions: `Write a longer-form pitch/proposal message to author {{name}} about their book "{{bookTitle}}".
+
+Author context:
+- Website: {{website}}
+- Genre: {{bookGenre}}
+- Themes: {{bookThemes}}
+- Specific hook: {{bookHook}}
+- Angle: {{angle}}
+
+Rules:
+- Title line: "Proposal for {{name}} — re: {{bookTitle}}".
+- Opening: 1-2 sentences that reference the specific hook concretely (show you read the book).
+- Then 3 numbered priorities for what you'd do for them, each tied to the book's specific themes/content (not generic).
+- A scope line: "Scope: 4 weeks, fixed fee, no results no charge."
+- CTA: "Pick a slot?".
+- Sign "[Your name]".
+- Plain text only, no markdown fences.`,
+  },
+};
+
 // POST /api/leads/[id]/messages  body: { type: 'cold_email'|'linkedin'|'followup'|'whatsapp'|'pitch' }
 export async function POST(
   req: NextRequest,
@@ -88,7 +180,8 @@ export async function POST(
   const { id } = await ctx.params;
   const body = await req.json();
   const type: string = body.type;
-  if (!TYPE_LABELS[type]) {
+  const TEMPLATES = body.authorMode ? AUTHOR_LABELS : ECOM_LABELS;
+  if (!TEMPLATES[type]) {
     return NextResponse.json({ error: "unknown message type" }, { status: 400 });
   }
   const geminiKey = req.headers.get("x-gemini-key") || body.geminiKey || "";
@@ -96,20 +189,55 @@ export async function POST(
   const lead = await db.lead.findUnique({ where: { id } });
   if (!lead) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const template = TYPE_LABELS[type];
+  const isAuthor = lead.leadType === "author" || body.authorMode;
+  const template = isAuthor ? AUTHOR_LABELS[type] : ECOM_LABELS[type];
+
+  // Parse book themes from JSON if present
+  let bookThemesStr = "";
+  try {
+    const themes = lead.bookThemes ? JSON.parse(lead.bookThemes) : [];
+    if (Array.isArray(themes)) bookThemesStr = themes.join(", ");
+  } catch { /* ignore */ }
+
   const fill = (s: string) =>
     s
       .replaceAll("{{name}}", lead.name || "there")
       .replaceAll("{{company}}", lead.company || lead.name || "your company")
       .replaceAll("{{website}}", lead.website || "")
       .replaceAll("{{industry}}", lead.industry || "e-commerce")
-      .replaceAll("{{angle}}", lead.geminiAngle || "Quick-win CRO + abandoned-cart automation");
+      .replaceAll("{{angle}}", lead.geminiAngle || (isAuthor ? "Book PR + targeted reader outreach" : "Quick-win CRO + abandoned-cart automation"))
+      .replaceAll("{{bookTitle}}", lead.bookTitle || "your most recent book")
+      .replaceAll("{{bookGenre}}", lead.bookGenre || "literary fiction")
+      .replaceAll("{{bookThemes}}", bookThemesStr || "identity, longing, and quiet redemption")
+      .replaceAll("{{bookHook}}", lead.bookHook || "the way the protagonist's voice fractures in the second act")
+      .replaceAll("{{authorBio}}", lead.authorBio || "");
 
   const instructions = fill(template.instructions);
-  const prompt = `${instructions}\n\nLead context:\n- Company: ${lead.company || lead.name}\n- Website: ${lead.website || "(unknown)"}\n- Industry: ${lead.industry || "e-commerce"}\n- Recommended angle: ${lead.geminiAngle || "CRO + cart recovery"}\n- Lead summary: ${lead.geminiSummary || "(no summary yet)"}`;
 
-  const sys =
-    "You are a senior B2B outreach copywriter. Write personalized, non-spammy messages. Always replace placeholders. Never invent real names for the sender — use '[Your name]' as the signoff.";
+  // Build rich lead-context block for the prompt
+  const leadContext = isAuthor
+    ? `Author context:
+- Name: ${lead.name}
+- Website: ${lead.website || "(unknown)"}
+- Book: ${lead.bookTitle || "(unknown)"}
+- Genre: ${lead.bookGenre || "(unknown)"}
+- Themes: ${bookThemesStr || "(none extracted)"}
+- Specific hook to reference: ${lead.bookHook || "(no specific hook extracted — pick a concrete detail based on themes)"}
+- Author bio: ${lead.authorBio || "(none)"}
+- Recommended angle: ${lead.geminiAngle || "Book PR + targeted reader outreach"}`
+    : `Lead context:
+- Company: ${lead.company || lead.name}
+- Website: ${lead.website || "(unknown)"}
+- Industry: ${lead.industry || "e-commerce"}
+- Recommended angle: ${lead.geminiAngle || "CRO + cart recovery"}
+- Lead summary: ${lead.geminiSummary || "(no summary yet)"}`;
+
+  const prompt = `${instructions}\n\n${leadContext}`;
+
+  const sys = isAuthor
+    ? "You are a senior publishing-industry outreach copywriter. You write to authors in a way that proves you actually read their book. You NEVER send generic flattery — you always reference a specific concrete detail from the book. Never invent the sender's name — use '[Your name]' as the signoff."
+    : "You are a senior B2B outreach copywriter. Write personalized, non-spammy messages. Always replace placeholders. Never invent real names for the sender — use '[Your name]' as the signoff.";
+
   const res = await callGemini(geminiKey, prompt, sys);
 
   if (res.error && !res.text) {
@@ -119,12 +247,7 @@ export async function POST(
   // Fill remaining placeholders (mostly relevant for mock responses)
   let content = res.text;
   if (res.usedMock) {
-    content = content
-      .replaceAll("{{name}}", lead.name || "there")
-      .replaceAll("{{company}}", lead.company || lead.name || "your company")
-      .replaceAll("{{website}}", lead.website || "")
-      .replaceAll("{{industry}}", lead.industry || "e-commerce")
-      .replaceAll("{{angle}}", lead.geminiAngle || "Quick-win CRO + abandoned-cart automation");
+    content = fill(content);
   }
 
   const message = await db.message.create({

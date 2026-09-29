@@ -31,6 +31,7 @@ import {
   Clock,
   Calendar,
   ChevronRight,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,6 +74,12 @@ type Lead = {
   industry: string | null;
   companySize: string | null;
   snippet: string | null;
+  leadType: string;
+  bookTitle: string | null;
+  bookGenre: string | null;
+  bookThemes: string | null;
+  bookHook: string | null;
+  authorBio: string | null;
   score: number;
   geminiVerified: boolean;
   geminiSummary: string | null;
@@ -96,6 +103,13 @@ type DiscoveredLead = {
   companySize: string;
   snippet: string;
   favicon: string;
+  leadType: "ecommerce" | "author";
+  // Author-specific
+  bookTitle: string | null;
+  bookGenre: string | null;
+  bookThemes: string[];
+  bookHook: string | null;
+  authorBio: string | null;
   verified: boolean;
   score: number;
   summary: string;
@@ -228,6 +242,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [industryFilter, setIndustryFilter] = useState("e-commerce");
+  const [niche, setNiche] = useState<"ecommerce" | "author">("ecommerce");
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveredLead[]>([]);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
@@ -288,7 +303,8 @@ export default function Home() {
         body: JSON.stringify({
           query,
           location: locationFilter,
-          industry: industryFilter,
+          industry: niche === "author" ? "publishing" : industryFilter,
+          leadType: niche,
           geminiKey: getGeminiKey(),
         }),
       });
@@ -332,6 +348,12 @@ export default function Home() {
           geminiWarnings: l.warnings ? JSON.stringify(l.warnings) : null,
           geminiVerified: l.verified,
           status: "new",
+          leadType: l.leadType || "ecommerce",
+          bookTitle: l.bookTitle || null,
+          bookGenre: l.bookGenre || null,
+          bookThemes: l.bookThemes ? JSON.stringify(l.bookThemes) : null,
+          bookHook: l.bookHook || null,
+          authorBio: l.authorBio || null,
         }),
       });
       const data = await res.json();
@@ -450,11 +472,12 @@ export default function Home() {
   async function generateMessage(type: string) {
     if (!selectedLead) return;
     setGeneratingType(type);
+    const isAuthor = selectedLead.leadType === "author";
     try {
       const res = await fetch(`/api/leads/${selectedLead.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-gemini-key": getGeminiKey() },
-        body: JSON.stringify({ type, geminiKey: getGeminiKey() }),
+        body: JSON.stringify({ type, geminiKey: getGeminiKey(), authorMode: isAuthor }),
       });
       const data = await res.json();
       if (data.error) {
@@ -644,20 +667,50 @@ export default function Home() {
         <div className="grid-bg rounded-2xl border border-border/60 p-6 md:p-10 mb-6 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-cyan-500/5 pointer-events-none" />
           <div className="relative">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-2">
-              Find your next <span className="text-emerald-400 text-glow">e-commerce leads</span>
-            </h2>
-            <p className="text-sm text-muted-foreground mb-6 max-w-2xl">
-              Search the web for SMB / Shopify / WooCommerce brands. Every lead is AI-confirmed
-              with Gemini (validates contact info, scores 0-100, summarizes portfolio) before
-              showing up below.
-            </p>
+            <div className="flex items-start justify-between gap-4 mb-2">
+              <div>
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-2">
+                  {niche === "author" ? (
+                    <>Find your next <span className="text-emerald-400 text-glow">author leads</span></>
+                  ) : (
+                    <>Find your next <span className="text-emerald-400 text-glow">e-commerce leads</span></>
+                  )}
+                </h2>
+                <p className="text-sm text-muted-foreground mb-6 max-w-2xl">
+                  {niche === "author"
+                    ? "Search the web for published authors and their books. Gemini extracts the author name, their most recent book title, themes, and a specific concrete \u2018hook\u2019 from the book to reference in outreach."
+                    : "Search the web for SMB / Shopify / WooCommerce brands. Every lead is AI-confirmed with Gemini (validates contact info, scores 0-100, summarizes portfolio) before showing up below."}
+                </p>
+              </div>
+            </div>
+
+            {/* Niche toggle */}
+            <div className="flex items-center gap-2 mb-4">
+              <Button
+                size="sm"
+                variant={niche === "ecommerce" ? "default" : "outline"}
+                onClick={() => setNiche("ecommerce")}
+                className={niche === "ecommerce" ? "bg-emerald-500 hover:bg-emerald-400 text-black" : ""}
+              >
+                <Building2 className="size-3.5" /> E-commerce / SMB
+              </Button>
+              <Button
+                size="sm"
+                variant={niche === "author" ? "default" : "outline"}
+                onClick={() => setNiche("author")}
+                className={niche === "author" ? "bg-emerald-500 hover:bg-emerald-400 text-black" : ""}
+              >
+                <BookOpen className="size-3.5" /> Authors / Books
+              </Button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
               <div className="md:col-span-6 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
-                  placeholder="e.g. Shopify stores selling skincare, WooCommerce fashion brands, DTC coffee..."
+                  placeholder={niche === "author"
+                    ? 'e.g. "debut literary fiction authors", "self-published fantasy authors", "memoir writers NYC"'
+                    : "e.g. Shopify stores selling skincare, WooCommerce fashion brands, DTC coffee..."}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && discover()}
@@ -673,18 +726,40 @@ export default function Home() {
                   className="pl-9 h-11 bg-card/50 border-border/60"
                 />
               </div>
-              <div className="md:col-span-2">
-                <Select value={industryFilter} onValueChange={setIndustryFilter}>
-                  <SelectTrigger className="h-11 bg-card/50 border-border/60">
-                    <SelectValue placeholder="Industry" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {INDUSTRIES.map((i) => (
-                      <SelectItem key={i} value={i}>{i}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {niche === "ecommerce" ? (
+                <div className="md:col-span-2">
+                  <Select value={industryFilter} onValueChange={setIndustryFilter}>
+                    <SelectTrigger className="h-11 bg-card/50 border-border/60">
+                      <SelectValue placeholder="Industry" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INDUSTRIES.map((i) => (
+                        <SelectItem key={i} value={i}>{i}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="md:col-span-2">
+                  <Select value={industryFilter} onValueChange={setIndustryFilter}>
+                    <SelectTrigger className="h-11 bg-card/50 border-border/60">
+                      <SelectValue placeholder="Genre" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="literary fiction">Literary fiction</SelectItem>
+                      <SelectItem value="fantasy">Fantasy</SelectItem>
+                      <SelectItem value="romance">Romance</SelectItem>
+                      <SelectItem value="thriller">Thriller</SelectItem>
+                      <SelectItem value="mystery">Mystery</SelectItem>
+                      <SelectItem value="memoir">Memoir</SelectItem>
+                      <SelectItem value="historical">Historical</SelectItem>
+                      <SelectItem value="young adult">Young adult</SelectItem>
+                      <SelectItem value="poetry">Poetry</SelectItem>
+                      <SelectItem value="nonfiction">Nonfiction</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="md:col-span-2">
                 <Button onClick={discover} disabled={discovering} className="h-11 w-full bg-emerald-500 hover:bg-emerald-400 text-black font-medium">
                   {discovering ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
@@ -744,7 +819,11 @@ export default function Home() {
           <div className="text-center py-16 text-muted-foreground">
             <Search className="size-12 mx-auto mb-3 opacity-30" />
             <p className="font-medium">Search for leads to begin</p>
-            <p className="text-xs mt-1">Try: "Shopify fashion brands", "DTC skincare stores", "WooCommerce coffee roasters"</p>
+            {niche === "author" ? (
+              <p className="text-xs mt-1">Try: "debut literary fiction authors", "self-published fantasy authors", "memoir writers with recent book"</p>
+            ) : (
+              <p className="text-xs mt-1">Try: "Shopify fashion brands", "DTC skincare stores", "WooCommerce coffee roasters"</p>
+            )}
           </div>
         )}
       </div>
@@ -756,6 +835,7 @@ export default function Home() {
     const saving = savingIds.has(sig);
     const saved = savedIds.has(sig);
     const tier = scoreTier(lead.score);
+    const isAuthor = lead.leadType === "author";
     return (
       <Card className="bg-card/60 border-border/60 hover:border-emerald-500/40 transition-colors flex flex-col">
         <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2 space-y-0">
@@ -763,6 +843,8 @@ export default function Home() {
             {lead.favicon ? (
                
               <img src={lead.favicon} alt="" className="size-8 rounded shrink-0 mt-0.5 bg-white/5" />
+            ) : isAuthor ? (
+              <BookOpen className="size-8 rounded shrink-0 mt-0.5 text-emerald-400/60" />
             ) : (
               <Globe className="size-8 rounded shrink-0 mt-0.5 text-muted-foreground" />
             )}
@@ -779,8 +861,30 @@ export default function Home() {
           </div>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col gap-3 pt-2">
+          {isAuthor && (lead.bookTitle || lead.bookGenre) && (
+            <div className="bg-violet-500/8 border border-violet-500/30 rounded-md px-2 py-2">
+              <div className="flex items-center gap-1.5 text-violet-300 text-[10px] uppercase tracking-wide">
+                <BookOpen className="size-3" /> {lead.bookGenre || "Unknown genre"}
+              </div>
+              <p className="text-sm font-semibold text-violet-100 truncate mt-0.5">
+                {lead.bookTitle || "(book title not extracted — set Gemini key)"}
+              </p>
+              {lead.bookThemes && lead.bookThemes.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {lead.bookThemes.slice(0, 4).map((t, i) => (
+                    <Badge key={i} variant="outline" className="text-[9px] border-violet-500/30 text-violet-200">{t}</Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {lead.summary && (
             <p className="text-xs text-muted-foreground line-clamp-3">{lead.summary}</p>
+          )}
+          {isAuthor && lead.bookHook && (
+            <div className="text-[11px] bg-amber-500/8 border border-amber-500/30 rounded-md px-2 py-1.5 text-amber-200">
+              <b>Book hook for outreach:</b> {lead.bookHook}
+            </div>
           )}
           <div className="flex flex-wrap gap-1.5 text-[10px]">
             {lead.email && (
@@ -792,13 +896,21 @@ export default function Home() {
             {lead.location && (
               <Badge variant="secondary" className="gap-1"><MapPin className="size-2.5" /> {lead.location}</Badge>
             )}
-            {lead.industry && (
+            {lead.industry && !isAuthor && (
               <Badge variant="secondary" className="gap-1"><Building2 className="size-2.5" /> {lead.industry}</Badge>
             )}
+            {isAuthor && lead.authorBio && (
+              <Badge variant="secondary" className="gap-1"><BookOpen className="size-2.5" /> author</Badge>
+            )}
           </div>
-          {lead.angle && (
+          {!isAuthor && lead.angle && (
             <div className="text-[11px] bg-emerald-500/8 border border-emerald-500/20 rounded-md px-2 py-1.5 text-emerald-300">
               <b>AI angle:</b> {lead.angle}
+            </div>
+          )}
+          {isAuthor && lead.angle && (
+            <div className="text-[11px] bg-emerald-500/8 border border-emerald-500/20 rounded-md px-2 py-1.5 text-emerald-300">
+              <b>Outreach angle:</b> {lead.angle}
             </div>
           )}
           {lead.warnings?.length > 0 && (
@@ -964,6 +1076,7 @@ export default function Home() {
 
   function PipelineCard({ lead, onOpen, onMove }: { lead: Lead; onOpen: () => void; onMove: (s: string) => void }) {
     const portfolio = parsePortfolio(lead.portfolioJson);
+    const isAuthor = lead.leadType === "author";
     return (
       <Card
         className="bg-card/70 border-border/60 hover:border-emerald-500/40 cursor-pointer transition-all hover:-translate-y-0.5"
@@ -971,11 +1084,17 @@ export default function Home() {
       >
         <CardContent className="p-3 space-y-2">
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold truncate">{lead.name}</p>
-              {lead.company && lead.company !== lead.name && (
-                <p className="text-[11px] text-muted-foreground truncate">{lead.company}</p>
-              )}
+            <div className="min-w-0 flex items-start gap-1.5">
+              {isAuthor && <BookOpen className="size-3.5 text-violet-400 shrink-0 mt-0.5" />}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{lead.name}</p>
+                {isAuthor && lead.bookTitle && (
+                  <p className="text-[11px] text-violet-300 truncate italic">"{lead.bookTitle}"</p>
+                )}
+                {!isAuthor && lead.company && lead.company !== lead.name && (
+                  <p className="text-[11px] text-muted-foreground truncate">{lead.company}</p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <span className={`text-xs font-bold ${scoreColor(lead.score)}`}>{lead.score}</span>
@@ -996,6 +1115,7 @@ export default function Home() {
             {lead.phone && <Badge variant="secondary" className="text-[9px] gap-1"><Phone className="size-2" /> phone</Badge>}
             {portfolio?.socials?.length > 0 && <Badge variant="secondary" className="text-[9px] gap-1"><Globe className="size-2" /> {portfolio.socials.length}</Badge>}
             {lead.location && <Badge variant="secondary" className="text-[9px] gap-1"><MapPin className="size-2" /> {lead.location}</Badge>}
+            {isAuthor && <Badge variant="outline" className="text-[9px] gap-1 border-violet-500/40 text-violet-300"><BookOpen className="size-2" /> author</Badge>}
           </div>
 
           <Select
@@ -1142,14 +1262,21 @@ export default function Home() {
   function LeadDetailSheet() {
     if (!selectedLead) return null;
     const portfolio = parsePortfolio(selectedLead.portfolioJson);
+    const isAuthor = selectedLead.leadType === "author";
     return (
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
         <SheetContent side="right" className="w-full sm:max-w-2xl bg-card/95 border-l border-border/60 p-0">
           <SheetHeader className="px-5 pt-5 pb-3 border-b border-border/40">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <SheetTitle className="text-lg font-semibold truncate">{selectedLead.name}</SheetTitle>
-                {selectedLead.company && selectedLead.company !== selectedLead.name && (
+                <SheetTitle className="text-lg font-semibold truncate flex items-center gap-2">
+                  {isAuthor && <BookOpen className="size-4 text-violet-400 shrink-0" />}
+                  {selectedLead.name}
+                </SheetTitle>
+                {isAuthor && selectedLead.bookTitle && (
+                  <p className="text-xs text-violet-300 truncate italic mt-0.5">"{selectedLead.bookTitle}"</p>
+                )}
+                {!isAuthor && selectedLead.company && selectedLead.company !== selectedLead.name && (
                   <p className="text-xs text-muted-foreground truncate">{selectedLead.company}</p>
                 )}
                 {selectedLead.website && (
@@ -1166,6 +1293,11 @@ export default function Home() {
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5 mt-3">
+              {isAuthor && (
+                <Badge variant="outline" className="border-violet-500/40 text-violet-300 gap-1">
+                  <BookOpen className="size-3" /> Author
+                </Badge>
+              )}
               <Badge variant="outline" className={`border-${selectedLead.geminiVerified ? "emerald" : "amber"}-500/40 text-${selectedLead.geminiVerified ? "emerald" : "amber"}-400 gap-1`}>
                 {selectedLead.geminiVerified ? <CheckCircle2 className="size-3" /> : <AlertTriangle className="size-3" />}
                 {selectedLead.geminiVerified ? "AI verified" : "Unverified"}
@@ -1173,7 +1305,8 @@ export default function Home() {
               {selectedLead.email && <Badge variant="secondary" className="gap-1 font-mono text-[10px]"><Mail className="size-3" /> {selectedLead.email}</Badge>}
               {selectedLead.phone && <Badge variant="secondary" className="gap-1 font-mono text-[10px]"><Phone className="size-3" /> {selectedLead.phone}</Badge>}
               {selectedLead.location && <Badge variant="secondary" className="gap-1 text-[10px]"><MapPin className="size-3" /> {selectedLead.location}</Badge>}
-              {selectedLead.industry && <Badge variant="secondary" className="gap-1 text-[10px]"><Building2 className="size-3" /> {selectedLead.industry}</Badge>}
+              {selectedLead.industry && !isAuthor && <Badge variant="secondary" className="gap-1 text-[10px]"><Building2 className="size-3" /> {selectedLead.industry}</Badge>}
+              {selectedLead.bookGenre && isAuthor && <Badge variant="secondary" className="gap-1 text-[10px]"><BookOpen className="size-3" /> {selectedLead.bookGenre}</Badge>}
             </div>
           </SheetHeader>
 
@@ -1187,13 +1320,52 @@ export default function Home() {
               </TabsList>
 
               <TabsContent value="overview" className="m-0 p-4 space-y-3 max-h-[60vh] overflow-y-auto scrollbar-thin">
+                {selectedLead.leadType === "author" && (selectedLead.bookTitle || selectedLead.bookGenre || selectedLead.bookHook || selectedLead.authorBio) && (
+                  <div className="bg-violet-500/8 border border-violet-500/30 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-violet-300 text-[10px] uppercase tracking-wide">
+                      <BookOpen className="size-3" /> {selectedLead.bookGenre || "Unknown genre"}
+                    </div>
+                    {selectedLead.bookTitle && (
+                      <p className="text-base font-semibold text-violet-100">"{selectedLead.bookTitle}"</p>
+                    )}
+                    {selectedLead.bookThemes && (
+                      (() => {
+                        try {
+                          const themes = JSON.parse(selectedLead.bookThemes);
+                          if (Array.isArray(themes) && themes.length > 0) {
+                            return (
+                              <div className="flex flex-wrap gap-1">
+                                {themes.map((t, i) => (
+                                  <Badge key={i} variant="outline" className="text-[10px] border-violet-500/40 text-violet-200">{t}</Badge>
+                                ))}
+                              </div>
+                            );
+                          }
+                        } catch { /* ignore */ }
+                        return null;
+                      })()
+                    )}
+                    {selectedLead.bookHook && (
+                      <div className="text-[11px] bg-amber-500/8 border border-amber-500/30 rounded-md px-2 py-1.5 text-amber-200 mt-2">
+                        <b>Specific hook for outreach:</b> {selectedLead.bookHook}
+                      </div>
+                    )}
+                    {selectedLead.authorBio && (
+                      <p className="text-xs text-muted-foreground italic mt-2">{selectedLead.authorBio}</p>
+                    )}
+                  </div>
+                )}
                 {selectedLead.geminiSummary ? (
                   <div>
-                    <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">AI summary</Label>
+                    <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{selectedLead.leadType === "author" ? "AI author summary" : "AI summary"}</Label>
                     <p className="text-sm mt-1">{selectedLead.geminiSummary}</p>
                   </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground italic">No AI summary yet. Click "Enrich" below to fetch portfolio + Gemini analysis.</div>
+                  <div className="text-sm text-muted-foreground italic">
+                    {selectedLead.leadType === "author"
+                      ? "No AI summary yet. Click \"Re-enrich\" below to fetch the author's portfolio + book extraction via Gemini."
+                      : "No AI summary yet. Click \"Re-enrich\" below to fetch portfolio + Gemini analysis."}
+                  </div>
                 )}
                 {selectedLead.geminiAngle && (
                   <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-md p-3">
@@ -1299,10 +1471,24 @@ export default function Home() {
 
               <TabsContent value="messages" className="m-0 p-4 max-h-[60vh] overflow-y-auto scrollbar-thin space-y-3">
                 <div>
-                  <Label className="text-[11px] uppercase text-muted-foreground">Generate new message</Label>
+                  <Label className="text-[11px] uppercase text-muted-foreground">
+                    {isAuthor ? "Generate book-aware outreach" : "Generate new message"}
+                  </Label>
+                  {isAuthor && (
+                    <p className="text-[10px] text-violet-300/80 mt-1 mb-2">
+                      Each message references a specific concrete detail from "{selectedLead.bookTitle || "the author's book"}" to catch their attention — not generic praise.
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-1.5 mt-2">
                     {MESSAGE_TYPES.map((t) => {
                       const Icon = t.icon;
+                      const label = isAuthor
+                        ? (t.id === "cold_email" ? "Author Cold Email"
+                          : t.id === "linkedin" ? "LinkedIn DM"
+                          : t.id === "followup" ? "Follow-up #1"
+                          : t.id === "whatsapp" ? "WhatsApp / SMS"
+                          : "Pitch / Proposal")
+                        : t.label;
                       return (
                         <Button
                           key={t.id}
@@ -1313,7 +1499,7 @@ export default function Home() {
                           className="justify-start gap-1.5 h-8 text-[11px]"
                         >
                           {generatingType === t.id ? <Loader2 className="size-3 animate-spin" /> : <Icon className="size-3" />}
-                          {t.label}
+                          {label}
                         </Button>
                       );
                     })}

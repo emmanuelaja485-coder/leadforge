@@ -48,3 +48,45 @@ Stage Summary:
 - 7 API endpoints covering search, CRUD, enrich, messages, tasks, automation
 - Dark-premium theme with emerald-cyan accents, glow effects, grid-bg hero
 - Key files: src/app/page.tsx (UI), src/lib/{gemini,lead-search}.ts, src/app/api/leads/*, src/app/api/automation/*
+
+---
+Task ID: 2
+Agent: main (super-z)
+Task: Extend LeadForge to support author leads with recent book + book-specific outreach
+
+Work Log:
+- Extended Prisma schema: added leadType, bookTitle, bookGenre, bookThemes (JSON), bookHook, authorBio fields
+- Ran `bun run db:push` and `bun run db:generate`
+- Updated /api/leads/search to accept `leadType` param and run author-specific Gemini extraction prompt (authorName, bookTitle, bookGenre, bookThemes, bookHook, authorBio)
+- Updated /api/leads POST to accept and persist the new author fields
+- Updated /api/leads GET to support `leadType` filter param and search bookTitle
+- Updated /api/leads/[id]/enrich: added 4th Gemini call for author extraction, author-specific validation/scoring/summary prompts, adapted keyword list (novel, memoir, fantasy, romance, etc.), persists book fields
+- Updated /api/leads/[id]/messages with two separate template sets (ECOM_LABELS + AUTHOR_LABELS); author templates require referencing a specific concrete book detail (hook) in every message type — not generic flattery
+- Updated src/lib/gemini.ts mock dispatcher: 5 author message templates + author extraction/validation/scoring/summary mocks, all checked first using stable post-fill phrases
+- Updated page.tsx:
+  * Added `niche` state ("ecommerce" | "author")
+  * Added niche toggle buttons in Discover tab (E-commerce / SMB | Authors / Books)
+  * Updated search placeholder + headline + industry dropdown (genre list for authors)
+  * DiscoveredCard shows violet book info box (title, genre, themes), amber book hook box, author badges
+  * PipelineCard shows book title in italics, violet author badge, BookOpen icon
+  * LeadDetailSheet shows author header with violet book badge, book section in Overview (genre, title, themes, hook, bio)
+  * Messages tab uses author labels (e.g. "Author Cold Email") and shows "Generate book-aware outreach" header with explanatory note
+  * generateMessage passes `authorMode` flag to API
+- Fixed dev server cache: deleted .next folder + restarted via .zscripts/dev.sh (dev server's global Prisma client cache was stale)
+- Lint: 0 errors / 0 warnings
+- Agent Browser verification:
+  * Authors niche toggle shows different headline, placeholder, genre dropdown
+  * Discovery search returns 2 AI-verified author leads (scribd.com, mail-archive.com)
+  * Save-to-pipeline works; lead appears with violet author badge in Pipeline
+  * Lead detail sheet shows author header + violet book badge + author summary
+  * Messages tab shows "Author Cold Email" button + "Generate book-aware outreach" header
+  * Cold email generation produces correct author template (references "your most recent book", "the way the protagonist's voice fractures in the second act", "literary fiction", "identity, longing, and quiet redemption")
+  * LinkedIn DM generation produces correct author template (connection note + message, both referencing the hook)
+  * Switching back to E-commerce / SMB resets headline, placeholder, and industry dropdown
+
+Stage Summary:
+- Author lead generation is live: search the web for authors, Gemini extracts their name + most recent book title + genre + themes + a specific concrete "hook" from the book to reference in outreach
+- 5 book-aware message templates (Author Cold Email, LinkedIn DM, Follow-up, WhatsApp, Pitch/Proposal) — each template ENFORCES referencing the specific hook in the first line/paragraph, not generic praise
+- All author UI elements use violet accent (distinct from emerald e-commerce accent) for clear visual differentiation
+- Both e-commerce and author leads coexist in the same pipeline with visual distinction via badges + book title display
+- Demo mode works end-to-end with mock AI; real Gemini API key unlocks full book extraction + personalized messages

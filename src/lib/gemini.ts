@@ -87,7 +87,27 @@ export async function callGemini(
 function mockResponseFor(prompt: string): string {
   const p = prompt.toLowerCase();
 
-  // 1) Message templates — match on the writer-instruction keywords first.
+  // 1) AUTHOR message templates — checked first. Match on stable instruction text
+  //    that survives the {{placeholder}} fill step (placeholders are already replaced
+  //    with real values by the time the prompt reaches callGemini).
+  if (p.includes("first-touch cold email to the author")) {
+    // Author cold email
+    return "Subject: The bit in {{bookTitle}} where {{bookHook}}\n\nHi {{name}},\n\nI read {{bookTitle}} last week — the moment with {{bookHook}} genuinely stayed with me. Most debut {{bookGenre}} novels pull that punch; you didn't.\n\nI run book PR + targeted reader outreach for {{bookGenre}} authors and noticed {{bookThemes}} readers are an underserved audience for your work. I'd put together a free reader-targeting teardown if you're open to it?\n\n10-min call next week?\n\n— [Your name]";
+  }
+  if (p.includes("(connection request note + first message) to author")) {
+    return "Hi {{name}} — {{bookHook}} in {{bookTitle}} knocked me sideways. Want to chat book PR? — [Your name]\n\nHi {{name}} — finished {{bookTitle}} yesterday. The {{bookHook}} bit — that's the line that made me message you. I help {{bookGenre}} authors find readers who'd actually feel that. Worth a quick chat? — [Your name]";
+  }
+  if (p.includes("follow-up email to author")) {
+    return "Hi {{name}},\n\nBumping my note about {{bookTitle}}. I keep thinking about {{bookHook}} — most {{bookGenre}} books wouldn't risk that move. I built a small reader-targeting teardown that ties your themes to underserved audiences. 5-min look?\n\n— [Your name]";
+  }
+  if (p.includes("whatsapp/sms message to author")) {
+    return "hey {{name}} — finished {{bookTitle}}. the {{bookHook}} bit wrecked me. built you a reader-targeting teardown. want it? — [your name]";
+  }
+  if (p.includes("pitch/proposal message to author")) {
+    return "Proposal for {{name}} — re: {{bookTitle}}\n\nHi {{name}},\n\nThe {{bookHook}} in {{bookTitle}} is exactly the kind of detail that finds its readers — but right now those readers don't know the book exists.\n\nHere's what I'd do:\n1. Reader-targeting sprint — surface {{bookThemes}} communities already primed for your book. Projected reach: 5-15k niche readers in 30 days.\n2. Review pipeline — long-form reviews on the 6 sites that actually move {{bookGenre}} sales. Projected +30% review velocity.\n3. Pitch package — a 1-pager built around {{bookHook}} for media + bookstagrammers.\n\nScope: 4 weeks, fixed fee, no results no charge.\n\nPick a slot?\n\n— [Your name]";
+  }
+
+  // 2) E-COMMERCE message templates
   if (p.includes("first-touch cold email") || p.includes("subject line on the first line")) {
     return "Subject: Quick idea for {{company}}\n\nHi {{name}},\n\nNoticed {{company}}'s storefront and loved the product mix — especially the way the collection pages are organized. Most Shopify brands I work with in {{industry}} are leaking 10-15% of revenue to abandoned carts; a 2-line email flow usually recovers most of it inside 14 days.\n\nWorth a 10-minute look next week? Happy to send a free teardown first.\n\n— [Your name]";
   }
@@ -104,7 +124,41 @@ function mockResponseFor(prompt: string): string {
     return "Proposal for {{company}}\n\nHi {{name}},\n\nBased on a quick audit of {{company}}, here's what I'd prioritize:\n\n1. Cart recovery automation — projected +8-12% revenue\n2. Product page CRO — projected +15% conversion\n3. Email flows rebuild — projected +5% LTV\n\nScope: 4 weeks, fixed fee, results guaranteed in writing.\n\nHappy to walk through the audit live. Pick a slot?\n\n— [Your name]";
   }
 
-  // 2) Lead validation / scoring / summarization prompts.
+  // 3) Author extraction / validation / scoring / summary (author mode)
+  if (p.includes("literary research assistant") && p.includes("authorname")) {
+    return JSON.stringify({
+      authorName: null,
+      bookTitle: null,
+      bookGenre: null,
+      bookThemes: [],
+      bookHook: "",
+      authorBio: null,
+    });
+  }
+  if (p.includes("validate this as a real, contactable author lead")) {
+    return JSON.stringify({
+      valid: true,
+      confidence: 70,
+      warnings: ["Author identity not confirmed without Gemini key — set API key in Settings."],
+      notes: "Mock validation in demo mode.",
+    });
+  }
+  if (p.includes("score this author lead")) {
+    return JSON.stringify({
+      score: 75,
+      tier: "warm",
+      signals: ["Author website active", "Genre keywords present"],
+      rationale: "Author shows publishing-relevant signals but book extraction requires real Gemini.",
+    });
+  }
+  if (p.includes("summarize this author lead")) {
+    return JSON.stringify({
+      summary: "Published author with active web presence; book extraction requires Gemini API key.",
+      angle: "Reference their most recent book and a specific concrete detail from it.",
+    });
+  }
+
+  // 4) E-commerce validation / scoring / summary
   if (p.includes("validate this lead") || (p.includes("validate") && p.includes("lead"))) {
     return JSON.stringify({
       valid: true,

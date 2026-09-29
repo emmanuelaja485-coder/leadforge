@@ -19,6 +19,14 @@ model Lead {
   industry       String?
   companySize   String?
   snippet        String?
+  // Niche type — drives which AI prompts + message templates apply
+  leadType       String   @default("ecommerce") // ecommerce | author
+  // Author-specific fields (null for ecommerce leads)
+  bookTitle      String?
+  bookGenre      String?
+  bookThemes     String?  // JSON string array of theme tags
+  bookHook      String?  // specific concrete detail Gemini can use to catch attention
+  authorBio      String?
   // AI / Gemini fields
   score          Int      @default(0) // 0-100
   geminiVerified Boolean  @default(false)
@@ -41,6 +49,7 @@ model Lead {
   @@index([status])
   @@index([location])
   @@index([industry])
+  @@index([leadType])
 }
 
 model Message {

@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   const companySize = url.searchParams.get("companySize") || "";
   const minScore = parseInt(url.searchParams.get("minScore") || "0", 10);
   const search = url.searchParams.get("q") || "";
+  const leadType = url.searchParams.get("leadType") || "";
 
   const where: any = {};
   if (status && status !== "all") where.status = status;
@@ -20,12 +21,14 @@ export async function GET(req: NextRequest) {
   if (industry) where.industry = { contains: industry };
   if (companySize) where.companySize = companySize;
   if (minScore > 0) where.score = { gte: minScore };
+  if (leadType && leadType !== "all") where.leadType = leadType;
   if (search) {
     where.OR = [
       { name: { contains: search } },
       { company: { contains: search } },
       { email: { contains: search } },
       { website: { contains: search } },
+      { bookTitle: { contains: search } },
     ];
   }
 
@@ -58,6 +61,12 @@ export async function POST(req: NextRequest) {
     geminiVerified,
     portfolioJson,
     status,
+    leadType,
+    bookTitle,
+    bookGenre,
+    bookThemes,
+    bookHook,
+    authorBio,
   } = body || {};
 
   if (!name) {
@@ -95,6 +104,12 @@ export async function POST(req: NextRequest) {
       geminiVerified: geminiVerified || false,
       portfolioJson: portfolioJson || null,
       status: status || "new",
+      leadType: leadType || "ecommerce",
+      bookTitle: bookTitle || null,
+      bookGenre: bookGenre || null,
+      bookThemes: bookThemes ? (typeof bookThemes === "string" ? bookThemes : JSON.stringify(bookThemes)) : null,
+      bookHook: bookHook || null,
+      authorBio: authorBio || null,
     },
   });
 
