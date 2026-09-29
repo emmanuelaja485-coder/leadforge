@@ -2,13 +2,18 @@
  * ZAI HTTP API client — calls ZAI's REST endpoints directly via fetch.
  *
  * Config comes from environment variables (set as Cloudflare secrets via
- * `wrangler secret put`, or in .env for local dev):
+ * `wrangler pages secret put`, or in .env for local dev):
  *   ZAI_BASE_URL, ZAI_API_KEY, ZAI_CHAT_ID, ZAI_USER_ID, ZAI_TOKEN
+ *
+ * On Cloudflare: env vars come from `getOptionalRequestContext().env`
+ * On local dev:  env vars come from `process.env` (set in .env)
  *
  * This replaces the z-ai-web-dev-sdk wrapper that was here before, because
  * the SDK reads its config from a file at runtime — which doesn't work on
  * Cloudflare's edge runtime (no fs module).
  */
+
+import { getOptionalRequestContext } from "@cloudflare/next-on-pages";
 
 interface ZAIConfig {
   baseUrl: string;
@@ -23,12 +28,27 @@ let cachedConfig: ZAIConfig | null = null;
 function getZAIConfig(): ZAIConfig | null {
   if (cachedConfig) return cachedConfig;
 
+  // On Cloudflare, env vars/secrets are exposed on the request context's env object
+  let envSource: Record<string, string | undefined> = {};
+  try {
+    const ctx = getOptionalRequestContext();
+    if (ctx?.env) {
+      envSource = ctx.env as Record<string, string | undefined>;
+    }
+  } catch {
+    // Not on Cloudflare — fall through to process.env
+  }
+  // Fall back to process.env for local dev
+  if (Object.keys(envSource).length === 0) {
+    envSource = process.env as Record<string, string | undefined>;
+  }
+
   const cfg: ZAIConfig = {
-    baseUrl: process.env.ZAI_BASE_URL || "",
-    apiKey: process.env.ZAI_API_KEY || "",
-    chatId: process.env.ZAI_CHAT_ID || undefined,
-    userId: process.env.ZAI_USER_ID || undefined,
-    token: process.env.ZAI_TOKEN || undefined,
+    baseUrl: envSource.ZAI_BASE_URL || process.env.ZAI_BASE_URL || "",
+    apiKey: envSource.ZAI_API_KEY || process.env.ZAI_API_KEY || "",
+    chatId: envSource.ZAI_CHAT_ID || process.env.ZAI_CHAT_ID || undefined,
+    userId: envSource.ZAI_USER_ID || process.env.ZAI_USER_ID || undefined,
+    token: envSource.ZAI_TOKEN || process.env.ZAI_TOKEN || undefined,
   };
 
   if (cfg.baseUrl && cfg.apiKey) {
