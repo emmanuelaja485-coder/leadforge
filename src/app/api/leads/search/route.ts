@@ -40,6 +40,7 @@ interface DiscoveredLead {
   angle: string;
   warnings: string[];
   usedMock: boolean;
+  usedFallback?: boolean;
   geminiError?: string;
 }
 
@@ -252,6 +253,7 @@ Return STRICT JSON only:
         angle: summaryJson.angle || "",
         warnings: validJson.warnings || [],
         usedMock: authorRes.usedMock || validRes.usedMock || scoreRes.usedMock || summaryRes.usedMock,
+        usedFallback: authorRes.usedFallback || validRes.usedFallback || scoreRes.usedFallback || summaryRes.usedFallback,
         geminiError: authorRes.error || validRes.error || scoreRes.error || summaryRes.error,
       });
       continue;
@@ -327,6 +329,7 @@ Return STRICT JSON only:
       angle: summaryJson.angle || "",
       warnings: validJson.warnings || [],
       usedMock: validRes.usedMock || scoreRes.usedMock || summaryRes.usedMock,
+      usedFallback: validRes.usedFallback || scoreRes.usedFallback || summaryRes.usedFallback,
       geminiError: validRes.error || scoreRes.error || summaryRes.error,
     });
   }

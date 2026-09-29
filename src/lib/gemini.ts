@@ -3,18 +3,65 @@
  * The user supplies their own API key through the settings UI; the key is
  * forwarded by the API routes via the `x-gemini-key` header.
  *
- * If no key is provided, all calls fall back to a deterministic mock so the
- * app remains demo-able end-to-end.
+ * FALLBACK CHAIN:
+ * 1. If a Gemini API key is set AND Gemini responds successfully → use Gemini
+ * 2. If Gemini fails (e.g. geo-restriction — Gemini is blocked from some server
+ *    regions like Hong Kong), automatically retry via the ZAI chat completions
+ *    API (which works from any region and is pre-installed in this project).
+ * 3. If no key is set, fall back to deterministic mock responses so the app
+ *    remains demo-able end-to-end.
+ *
+ * The `usedFallback` flag in the response indicates when the ZAI fallback was
+ * used so the UI can surface this to the user.
  */
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+import ZAI from "z-ai-web-dev-sdk";
+
+const GEMINI_MODEL = "gemini-3.8-flash";
 const GEMINI_ENDPOINT = (key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 
 export interface GeminiResponse {
   text: string;
   usedMock: boolean;
+  usedFallback?: boolean; // true when ZAI chat was used instead of Gemini
   error?: string;
+}
+
+let zaiInstance: ZAI | null = null;
+async function getZAI(): Promise<ZAI> {
+  if (!zaiInstance) {
+    zaiInstance = await ZAI.create();
+  }
+  return zaiInstance;
+}
+
+/**
+ * Fallback: use ZAI's chat completions API when Gemini is unavailable.
+ * ZAI is pre-configured via .z-ai-config and works in any region.
+ */
+async function callZAIChat(
+  prompt: string,
+  systemPrompt?: string
+): Promise<string> {
+  try {
+    const zai = await getZAI();
+    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
+    if (systemPrompt) {
+      messages.push({ role: "system", content: systemPrompt });
+    }
+    messages.push({ role: "user", content: prompt });
+
+    const completion: any = await zai.chat.completions.create({
+      messages,
+      thinking: { type: "disabled" },
+    });
+
+    const text = completion?.choices?.[0]?.message?.content ?? "";
+    return typeof text === "string" ? text.trim() : String(text);
+  } catch (err: any) {
+    return "";
+  }
 }
 
 export async function callGemini(
@@ -22,6 +69,7 @@ export async function callGemini(
   prompt: string,
   systemPrompt?: string
 ): Promise<GeminiResponse> {
+  // No key → mock mode
   if (!apiKey) {
     return {
       text: mockResponseFor(prompt),
@@ -29,6 +77,7 @@ export async function callGemini(
     };
   }
 
+  // Try Gemini first
   try {
     const body: any = {
       contents: [
@@ -54,20 +103,43 @@ export async function callGemini(
       body: JSON.stringify(body),
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      return {
-        text: "",
-        usedMock: false,
-        error: `Gemini API error ${resp.status}: ${errText.slice(0, 300)}`,
-      };
+    if (resp.ok) {
+      const data = await resp.json();
+      const text =
+        data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("\n") ?? "";
+      const trimmed = text.trim();
+      if (trimmed) {
+        return { text: trimmed, usedMock: false, usedFallback: false };
+      }
     }
 
-    const data = await resp.json();
-    const text =
-      data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("\n") ?? "";
-    return { text: text.trim(), usedMock: false };
+    // Gemini returned an error — try the ZAI fallback
+    const errText = await resp.text().catch(() => "");
+    const zaiText = await callZAIChat(prompt, systemPrompt);
+    if (zaiText) {
+      return {
+        text: zaiText,
+        usedMock: false,
+        usedFallback: true,
+        error: `Gemini unavailable (HTTP ${resp.status}), used ZAI fallback. ${errText.slice(0, 120)}`,
+      };
+    }
+    return {
+      text: "",
+      usedMock: false,
+      error: `Gemini API error ${resp.status}: ${errText.slice(0, 300)}`,
+    };
   } catch (err: any) {
+    // Network / runtime error — try the ZAI fallback
+    const zaiText = await callZAIChat(prompt, systemPrompt);
+    if (zaiText) {
+      return {
+        text: zaiText,
+        usedMock: false,
+        usedFallback: true,
+        error: `Gemini network error, used ZAI fallback. ${err?.message || ""}`,
+      };
+    }
     return {
       text: "",
       usedMock: false,

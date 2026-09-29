@@ -263,5 +263,5 @@ export async function POST(
     data: { leadId: id, action: "message_generated", detail: `Generated ${template.label} via Gemini.` },
   });
 
-  return NextResponse.json({ message, usedMock: res.usedMock });
+  return NextResponse.json({ message, usedMock: res.usedMock, usedFallback: res.usedFallback });
 }

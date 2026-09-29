@@ -264,6 +264,7 @@ Return STRICT JSON only:
       summary: summaryJson,
       author: authorJson,
       usedMock: validRes.usedMock || scoreRes.usedMock || summaryRes.usedMock || (isAuthor && authorRes.usedMock),
+      usedFallback: validRes.usedFallback || scoreRes.usedFallback || summaryRes.usedFallback || (isAuthor && authorRes.usedFallback),
       error: validRes.error || scoreRes.error || summaryRes.error || (isAuthor ? authorRes.error : undefined),
     },
   });

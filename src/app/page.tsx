@@ -116,6 +116,7 @@ type DiscoveredLead = {
   angle: string;
   warnings: string[];
   usedMock: boolean;
+  usedFallback?: boolean;
   geminiError?: string;
 };
 
@@ -312,8 +313,12 @@ export default function Home() {
       const data = await res.json();
       setDiscovered(data.leads || []);
       const anyMock = data.leads?.some((l: DiscoveredLead) => l.usedMock);
+      const anyFallback = data.leads?.some((l: DiscoveredLead) => l.usedFallback);
       if (anyMock) {
         toast.info("Gemini key not set — running in demo mode with mock AI responses. Add your key in Settings for real AI.");
+      } else if (anyFallback) {
+        toast.success(`Discovered ${data.leads?.length || 0} verified leads`);
+        toast.info("Gemini geo-blocked from this server — using ZAI chat as fallback for real AI responses.");
       } else {
         toast.success(`Discovered ${data.leads?.length || 0} verified leads`);
       }
@@ -461,6 +466,8 @@ export default function Home() {
       }
       if (data.gemini?.usedMock) {
         toast.info("Using mock AI — set your Gemini key in Settings for real responses.");
+      } else if (data.gemini?.usedFallback) {
+        toast.info("Gemini geo-blocked — used ZAI chat fallback for real AI responses.");
       }
     } catch {
       toast.error("Enrich failed");
@@ -488,6 +495,8 @@ export default function Home() {
       toast.success("Message generated");
       if (data.usedMock) {
         toast.info("Using mock AI — set your Gemini key in Settings for real responses.");
+      } else if (data.usedFallback) {
+        toast.info("Gemini geo-blocked — used ZAI chat fallback for real AI responses.");
       }
       // Refresh selectedLead to update lastContactedAt + status
       const leadRes = await fetch(`/api/leads/${selectedLead.id}`);
