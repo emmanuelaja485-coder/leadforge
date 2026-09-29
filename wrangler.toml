@@ -9,7 +9,7 @@ pages_build_output_dir = ".vercel/output/static"
 [[d1_databases]]
 binding = "DB"
 database_name = "leadforge-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "9daf3c82-f51c-4d8b-8a5c-34450dc5cccd"
 migrations_dir = "prisma/migrations"
 
 # Optional: environment variables for the app

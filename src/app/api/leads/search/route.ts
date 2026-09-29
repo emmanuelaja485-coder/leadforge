@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { searchWeb, readPage, stripHtml } from "@/lib/lead-search";
 import { callGemini } from "@/lib/gemini";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 interface RawCandidate {
