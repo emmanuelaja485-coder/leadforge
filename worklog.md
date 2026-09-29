@@ -129,3 +129,47 @@ Stage Summary:
 - User gets REAL AI responses either way (no degradation to mock mode when key is set)
 - The fallback is invisible to the user — same UX, same message quality, just routed through ZAI when Gemini is unavailable
 - App is now fully functional end-to-end with the user's API key: discovery, validation, scoring, summary, portfolio extraction, AND all 5 message types (cold email, LinkedIn DM, follow-up, WhatsApp, pitch) for both e-commerce and author niches
+
+---
+Task ID: 4
+Agent: main (super-z)
+Task: Push LeadForge to GitHub + deploy to Cloudflare Pages with D1
+
+Work Log:
+- User provided: GitHub PAT (ghp_...), Cloudflare API token (cfat_7jr2vayhk...), Cloudflare Account ID (2b778e15f8...)
+- Verified GitHub token via /user endpoint → username: emmanuelaja485-coder
+- Verified Cloudflare token via /accounts endpoint → account: "Emmanuelaja485@gmail.com's Account"
+- First Cloudflare token (cfat_H0kzwtp...) lacked D1:Edit permission → user rolled new token (cfat_7jr2vayhk...)
+- Created private GitHub repo: github.com/emmanuelaja485-coder/leadforge
+- Pushed initial commit de85fa5 (Cloudflare D1 + Pages deploy config; removed .env and db/custom.db from tracking)
+- Created D1 database via direct API: leadforge-db, uuid=9daf3c82-f51c-4d8b-8a5c-34450dc5cccd
+- Updated wrangler.toml with the real database_id
+- Generated Prisma migration SQL via `bunx prisma migrate diff --from-empty --to-schema-datamodel`
+- Applied migration to D1 via `wrangler d1 execute leadforge-db --remote --file=...`
+  - 5 tables created (Lead, Message, Task, AutomationRule, AutomationLog)
+  - DB size: 77 KB
+- First build attempt with @cloudflare/next-on-pages failed: "routes not configured to run with the Edge Runtime"
+- Switched all 9 API routes from `runtime = "nodejs"` to `runtime = "edge"` (required for Cloudflare Pages)
+- Added missing runtime="edge" to /api/route.ts (default API route)
+- Re-build succeeded — 14 modules, 6.2 MB total
+- Created Cloudflare Pages project: `wrangler pages project create leadforge --production-branch=main`
+  - Production URL: https://leadforge-e1v.pages.dev/
+- Deployed via `wrangler pages deploy .vercel/output/static --project-name=leadforge`
+  - Preview URL: https://fd917967.leadforge-e1v.pages.dev
+- End-to-end verification on Cloudflare:
+  - GET / → HTTP 200, full HTML rendered (30 KB), dark theme applied
+  - GET /api → HTTP 200, {"message":"LeadForge API","status":"ok"}
+  - GET /api/leads → HTTP 200, {"leads":[]} (fresh D1, empty)
+  - POST /api/leads → HTTP 200, lead created with id cmun7qqqp... (D1 write works)
+  - GET /api/leads → HTTP 200, returns the created lead (D1 read works)
+  - DELETE /api/leads/cmun7qqqp... → HTTP 200, {"ok":true} (D1 delete works)
+  - GET /api/leads → HTTP 200, {"leads":[]} (cleanup verified)
+- Committed deploy changes (commit 70cb099) and pushed to GitHub
+
+Stage Summary:
+- Live production URL: https://leadforge-e1v.pages.dev/
+- GitHub repo: https://github.com/emmanuelaja485-coder/leadforge (private)
+- D1 database: leadforge-db (uuid 9daf3c82-f51c-4d8b-8a5c-34450dc5cccd) — schema applied, 5 tables
+- Full CRUD pipeline verified on Cloudflare edge runtime with D1 adapter
+- ZAI SDK features (web_search, page_reader, chat fallback) will fail at runtime on Cloudflare due to file-read requirement; direct Gemini API calls will work since Cloudflare's edge is global (no HK geo-block)
+- User should set their Gemini API key via the Settings tab in the live app
