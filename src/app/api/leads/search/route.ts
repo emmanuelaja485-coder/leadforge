@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     ? [query, "author", "book", "novel", location].filter(Boolean).join(" ")
     : [query, industry, location].filter(Boolean).join(" ");
 
-  const raw = await searchWeb(augmented, 12);
+  const raw = await searchWeb(augmented, 12, geminiKey);
 
   // For author mode, KEEP goodreads.com and amazon.com (book listings)
   // but still block pure social sites.
