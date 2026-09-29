@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     ];
   }
 
-  const leads = await db.lead.findMany({
+  const leads = await (await db).lead.findMany({
     where,
     orderBy: { createdAt: "desc" },
     take: 500,
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Dedupe by website or email
-  const existing = await db.lead.findFirst({
+  const existing = await (await db).lead.findFirst({
     where: {
       OR: [
         ...(website ? [{ website }] : []),
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ lead: existing, duplicate: true });
   }
 
-  const lead = await db.lead.create({
+  const lead = await (await db).lead.create({
     data: {
       name,
       company: company || null,
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
   // Auto-create follow-up task (automation rule)
   const due = new Date();
   due.setDate(due.getDate() + 3);
-  await db.task.create({
+  await (await db).task.create({
     data: {
       leadId: lead.id,
       title: `Follow up with ${lead.name}`,
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  await db.automationLog.create({
+  await (await db).automationLog.create({
     data: {
       leadId: lead.id,
       action: "auto_followup_task",

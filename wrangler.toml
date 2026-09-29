@@ -1,0 +1,23 @@
+name = "leadforge"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+# D1 database binding — replaces the local SQLite file when running on Cloudflare
+# Create the database first with: wrangler d1 create leadforge-db
+# Then paste the database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "leadforge-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "prisma/migrations"
+
+# Optional: environment variables for the app
+[vars]
+NODE_ENV = "production"
+
+# The Gemini API key is stored as a Cloudflare secret (NOT in this file):
+#   wrangler secret put GEMINI_API_KEY
+# Note: this app's design lets the user paste their own Gemini key in the
+# Settings tab (stored in browser localStorage). The server-side GEMINI_API_KEY
+# secret is unused unless you want a server-side default for all users.

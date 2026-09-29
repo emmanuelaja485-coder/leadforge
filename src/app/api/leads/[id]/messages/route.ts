@@ -11,7 +11,7 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
-  const messages = await db.message.findMany({
+  const messages = await (await db).message.findMany({
     where: { leadId: id },
     orderBy: { createdAt: "desc" },
   });
@@ -186,7 +186,7 @@ export async function POST(
   }
   const geminiKey = req.headers.get("x-gemini-key") || body.geminiKey || "";
 
-  const lead = await db.lead.findUnique({ where: { id } });
+  const lead = await (await db).lead.findUnique({ where: { id } });
   if (!lead) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const isAuthor = lead.leadType === "author" || body.authorMode;
@@ -250,16 +250,16 @@ export async function POST(
     content = fill(content);
   }
 
-  const message = await db.message.create({
+  const message = await (await db).message.create({
     data: { leadId: id, type, content },
   });
 
-  await db.lead.update({
+  await (await db).lead.update({
     where: { id },
     data: { lastContactedAt: new Date(), status: lead.status === "new" ? "contacted" : lead.status },
   });
 
-  await db.automationLog.create({
+  await (await db).automationLog.create({
     data: { leadId: id, action: "message_generated", detail: `Generated ${template.label} via Gemini.` },
   });
 

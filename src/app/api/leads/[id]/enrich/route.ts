@@ -72,7 +72,7 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
-  const lead = await db.lead.findUnique({ where: { id } });
+  const lead = await (await db).lead.findUnique({ where: { id } });
   if (!lead) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const geminiKey =
@@ -227,7 +227,7 @@ Return STRICT JSON only:
     try { authorJson = JSON.parse(authorRes.text.replace(/```json|```/g, "").trim()); } catch { /* empty */ }
   }
 
-  const updated = await db.lead.update({
+  const updated = await (await db).lead.update({
     where: { id },
     data: {
       geminiVerified: validJson.valid !== false,
@@ -251,7 +251,7 @@ Return STRICT JSON only:
     include: { messages: true, tasks: true },
   });
 
-  await db.automationLog.create({
+  await (await db).automationLog.create({
     data: { leadId: id, action: "auto_enrich", detail: isAuthor ? "Enriched author portfolio + book extraction + Gemini validation." : "Enriched lead portfolio + Gemini validation." },
   });
 

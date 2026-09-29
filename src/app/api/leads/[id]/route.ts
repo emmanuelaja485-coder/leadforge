@@ -10,7 +10,7 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
-  const lead = await db.lead.findUnique({
+  const lead = await (await db).lead.findUnique({
     where: { id },
     include: { messages: { orderBy: { createdAt: "desc" } }, tasks: { orderBy: { createdAt: "desc" } } },
   });
@@ -41,7 +41,7 @@ export async function PATCH(
   if (body.phone !== undefined) data.phone = body.phone;
   if (body.notes !== undefined) data.snippet = body.notes;
 
-  const lead = await db.lead.update({ where: { id }, data });
+  const lead = await (await db).lead.update({ where: { id }, data });
   return NextResponse.json({ lead });
 }
 
@@ -50,6 +50,6 @@ export async function DELETE(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
-  await db.lead.delete({ where: { id } });
+  await (await db).lead.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

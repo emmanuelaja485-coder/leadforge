@@ -10,7 +10,7 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
-  const tasks = await db.task.findMany({
+  const tasks = await (await db).task.findMany({
     where: { leadId: id },
     orderBy: { createdAt: "desc" },
   });
@@ -28,7 +28,7 @@ export async function POST(
   if (!title || !type) {
     return NextResponse.json({ error: "title and type required" }, { status: 400 });
   }
-  const task = await db.task.create({
+  const task = await (await db).task.create({
     data: {
       leadId: id,
       title,
@@ -51,7 +51,7 @@ export async function PATCH(
   if (body.title !== undefined) data.title = body.title;
   if (body.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
 
-  const task = await db.task.update({ where: { id: body.id || id }, data });
+  const task = await (await db).task.update({ where: { id: body.id || id }, data });
   return NextResponse.json({ task });
 }
 
@@ -63,6 +63,6 @@ export async function DELETE(
   const url = new URL(req.url);
   const taskId = url.searchParams.get("taskId");
   if (!taskId) return NextResponse.json({ error: "taskId required" }, { status: 400 });
-  await db.task.delete({ where: { id: taskId } });
+  await (await db).task.delete({ where: { id: taskId } });
   return NextResponse.json({ ok: true });
 }

@@ -52,3 +52,16 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# LeadForge-specific — never commit secrets or local DB
+.env
+.env.local
+.env.production
+db/
+*.db
+*.sqlite
+*.sqlite3
+
+# Cloudflare wrangler
+.wrangler/
+.dev.vars

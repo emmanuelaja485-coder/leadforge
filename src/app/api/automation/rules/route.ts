@@ -7,16 +7,17 @@ export const dynamic = "force-dynamic";
 // GET /api/automation/rules
 export async function GET() {
   // Seed default rules if none exist
-  let rules = await db.automationRule.findMany();
+  let rules = await (await db).automationRule.findMany();
   if (rules.length === 0) {
     const defaults = [
       { name: "Auto-enrich new leads", type: "auto_enrich", enabled: true, configJson: JSON.stringify({ runOnCreate: true }) },
       { name: "Auto-advance 'new' → 'contacted' after 24h", type: "auto_advance_status", enabled: true, configJson: JSON.stringify({ hours: 24, from: "new", to: "contacted" }) },
       { name: "Create follow-up task 3 days after creation", type: "auto_followup_task", enabled: true, configJson: JSON.stringify({ days: 3 }) },
     ];
-    rules = await Promise.all(defaults.map((d) => db.automationRule.create({ data: d })));
+    const prisma = await db;
+    rules = await Promise.all(defaults.map((d) => prisma.automationRule.create({ data: d })));
   }
-  const logs = await db.automationLog.findMany({
+  const logs = await (await db).automationLog.findMany({
     take: 20,
     orderBy: { createdAt: "desc" },
     include: { lead: true },
@@ -28,7 +29,7 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, enabled } = body;
-  const rule = await db.automationRule.update({
+  const rule = await (await db).automationRule.update({
     where: { id },
     data: { enabled: !!enabled },
   });
