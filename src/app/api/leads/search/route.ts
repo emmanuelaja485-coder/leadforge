@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
   const industry: string = body.industry?.trim() || "e-commerce";
   const leadType: "ecommerce" | "author" = body.leadType === "author" ? "author" : "ecommerce";
   const geminiKey: string = body.geminiKey || req.headers.get("x-gemini-key") || "";
+  const braveKey: string = body.braveKey || req.headers.get("x-brave-key") || "";
 
   if (!query) {
     return NextResponse.json({ error: "query is required" }, { status: 400 });
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
     ? [query, "author", "book", "novel", location].filter(Boolean).join(" ")
     : [query, industry, location].filter(Boolean).join(" ");
 
-  const raw = await searchWeb(augmented, 12, geminiKey);
+  const raw = await searchWeb(augmented, 12, geminiKey, braveKey);
 
   // For author mode, KEEP goodreads.com and amazon.com (book listings)
   // but still block pure social sites.

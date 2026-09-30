@@ -206,6 +206,14 @@ function setGeminiKey(v: string) {
   if (typeof window === "undefined") return;
   localStorage.setItem("leadforge.geminiKey", v);
 }
+function getBraveKey(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("leadforge.braveKey") || "";
+}
+function setBraveKey(v: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("leadforge.braveKey", v);
+}
 
 function scoreColor(score: number) {
   if (score >= 80) return "text-emerald-400";
@@ -278,9 +286,12 @@ export default function Home() {
   // Settings
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [braveKeyInput, setBraveKeyInput] = useState("");
+  const [showBraveKey, setShowBraveKey] = useState(false);
 
   useEffect(() => {
     setGeminiKeyInput(getGeminiKey());
+    setBraveKeyInput(getBraveKey());
     refreshLeads();
     refreshAutomation();
     // run automation once on load
@@ -307,6 +318,7 @@ export default function Home() {
           industry: niche === "author" ? "publishing" : industryFilter,
           leadType: niche,
           geminiKey: getGeminiKey(),
+          braveKey: getBraveKey(),
         }),
       });
       if (!res.ok) throw new Error("Search failed");
@@ -1218,9 +1230,47 @@ export default function Home() {
       <div className="max-w-2xl mx-auto space-y-6">
         <Card className="bg-card/50 border-border/60">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Sparkles className="size-5 text-emerald-400" /> Gemini API key</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Search className="size-5 text-emerald-400" /> Brave Search API key (recommended)</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Your key is stored locally in your browser and only sent to the server-side API calls when confirming leads and generating messages. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-emerald-400 underline">Google AI Studio</a>.
+              Powers the Discover tab. Brave Search is the most reliable way to find leads — 2000 queries/month free, no geo-block. Get a free key at <a href="https://api.search.brave.com" target="_blank" rel="noreferrer" className="text-emerald-400 underline">api.search.brave.com</a> → Register → Subscribe to Free plan → copy API key.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Label htmlFor="brave-key">Brave API key</Label>
+            <div className="flex gap-2">
+              <Input
+                id="brave-key"
+                type={showBraveKey ? "text" : "password"}
+                value={braveKeyInput}
+                onChange={(e) => setBraveKeyInput(e.target.value)}
+                placeholder="BSA..."
+                className="font-mono bg-background/50"
+              />
+              <Button variant="outline" size="icon" onClick={() => setShowBraveKey((s) => !s)}>
+                {showBraveKey ? "Hide" : "Show"}
+              </Button>
+            </div>
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-[11px] text-muted-foreground">
+                Status: {getBraveKey() ? <Badge variant="outline" className="text-emerald-400 border-emerald-500/30">Connected</Badge> : <Badge variant="outline" className="text-amber-400 border-amber-500/30">Not set</Badge>}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => { setBraveKey(""); setBraveKeyInput(""); toast.success("Cleared"); }}>
+                  Clear
+                </Button>
+                <Button size="sm" onClick={() => { setBraveKey(braveKeyInput.trim()); toast.success("Brave API key saved locally"); setTab("discover"); }} className="bg-emerald-500 hover:bg-emerald-400 text-black">
+                  <Check className="size-4" /> Save
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50 border-border/60">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Sparkles className="size-5 text-emerald-400" /> Gemini API key (optional)</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Powers AI summaries, lead scoring, and message generation. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-emerald-400 underline">Google AI Studio</a>. If you don't set this, the app uses ZAI chat as fallback (works on this sandbox).
             </p>
           </CardHeader>
           <CardContent className="space-y-3">

@@ -93,34 +93,174 @@ const GEMINI_ENDPOINT = (key: string) =>
 // ---------------- searchWeb — uses Gemini google_search ----------------
 
 /**
- * Search the web for lead candidates using Gemini's google_search tool.
- * Returns a list of { url, name, snippet, host_name, rank, date, favicon }.
+ * Search the web for lead candidates using a multi-engine fallback chain.
  *
- * FALLBACK CHAIN:
- * 1. If geminiKey is provided → try Gemini's google_search tool (works on
- *    Cloudflare since Gemini is reachable from the edge)
- * 2. If Gemini fails (quota, network) OR no key → fall back to ZAI web_search
- *    (only works on local dev where ZAI session token is valid)
- * 3. If both fail → return []
+ * FALLBACK CHAIN (tries each in order until one returns results):
+ * 1. If braveKey is provided → Brave Search API (2000 queries/month free, no
+ *    geo-block, most reliable)
+ * 2. If geminiKey is provided → Gemini google_search tool (works on Cloudflare
+ *    since Gemini is reachable from the edge)
+ * 3. DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere —
+ *    may be blocked by some server IPs)
+ * 4. ZAI web_search (sandbox dev only — won't work on Cloudflare because the
+ *    token is session-bound)
+ * 5. If all fail → return []
  */
 export async function searchWeb(
   query: string,
   num = 10,
-  geminiKey?: string | null
+  geminiKey?: string | null,
+  braveKey?: string | null
 ): Promise<RawSearchResult[]> {
-  // 1) Try Gemini google_search first
+  // 1) Try Brave Search API first (most reliable)
+  if (braveKey) {
+    const braveResults = await searchWebViaBrave(query, num, braveKey);
+    if (braveResults.length > 0) return braveResults;
+  }
+
+  // 2) Try Gemini google_search
   if (geminiKey) {
     const geminiResults = await searchWebViaGemini(query, num, geminiKey);
     if (geminiResults.length > 0) return geminiResults;
-    // else fall through to ZAI
   }
 
-  // 2) Fall back to ZAI web_search (sandbox dev only — won't work on Cloudflare)
+  // 3) Try DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere)
+  const ddgResults = await searchWebViaDDG(query, num);
+  if (ddgResults.length > 0) return ddgResults;
+
+  // 4) Fall back to ZAI web_search (sandbox dev only)
   const zaiResults = await searchWebViaZAI(query, num);
   if (zaiResults.length > 0) return zaiResults;
 
-  // 3) Both failed
+  // 5) All failed
   return [];
+}
+
+/**
+ * Brave Search API — free 2000 queries/month, no geo-block.
+ * User signs up at https://api.search.brave.com to get an API key.
+ */
+async function searchWebViaBrave(
+  query: string,
+  num: number,
+  braveKey: string
+): Promise<RawSearchResult[]> {
+  try {
+    const resp = await fetch(
+      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${num}`,
+      {
+        method: "GET",
+        headers: {
+          "X-Subscription-Token": braveKey,
+          Accept: "application/json",
+        },
+      }
+    );
+    if (!resp.ok) {
+      console.error("Brave search HTTP error:", resp.status);
+      return [];
+    }
+    const data: any = await resp.json();
+    const results: any[] = data?.web?.results || [];
+    return results.map((r, i) => ({
+      url: r.url || "",
+      name: r.title || r.url || "",
+      snippet: r.description || "",
+      host_name: (() => {
+        try {
+          return new URL(r.url).hostname.replace(/^www\./, "");
+        } catch {
+          return r.url || "";
+        }
+      })(),
+      rank: i,
+      date: r.age || r.page_age || "",
+      favicon: r.favicon || "",
+    }));
+  } catch (err) {
+    console.error("searchWebViaBrave failed:", err);
+    return [];
+  }
+}
+
+/**
+ * DuckDuckGo HTML scraping — no key, no rate limit, works from anywhere.
+ * Fetches the HTML results page and parses the result links + snippets.
+ */
+async function searchWebViaDDG(
+  query: string,
+  num: number
+): Promise<RawSearchResult[]> {
+  try {
+    const resp = await fetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+      {
+        method: "GET",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      }
+    );
+    if (!resp.ok) {
+      console.error("DDG HTTP error:", resp.status);
+      return [];
+    }
+    const html = await resp.text();
+    if (!html) return [];
+
+    const results: RawSearchResult[] = [];
+
+    // DDG HTML structure: each result is wrapped in a div with class="result"
+    // Result link: <a class="result__a" href="//duckduckgo.com/l/?uddg=ENCODED_URL&rut=...">
+    // Result snippet: <a class="result__snippet">...</a>
+    const resultRegex =
+      /<a[^>]+class="result__a"[^>]+href="\/\/duckduckgo\.com\/l\/\?uddg=([^&"]+)[^"]*"[^>]*>([^<]+)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+
+    let match: RegExpExecArray | null;
+    let rank = 0;
+    while ((match = resultRegex.exec(html)) !== null && rank < num) {
+      const encodedUrl = match[1];
+      const name = match[2].trim();
+      const snippetRaw = match[3]
+        .replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .trim();
+
+      try {
+        const url = decodeURIComponent(encodedUrl);
+        let hostName = "";
+        try {
+          hostName = new URL(url).hostname.replace(/^www\./, "");
+        } catch {
+          hostName = url;
+        }
+
+        results.push({
+          url,
+          name,
+          snippet: snippetRaw,
+          host_name: hostName,
+          rank,
+          date: "",
+          favicon: "",
+        });
+        rank++;
+      } catch {
+        /* skip invalid URL */
+      }
+    }
+
+    return results;
+  } catch (err) {
+    console.error("searchWebViaDDG failed:", err);
+    return [];
+  }
 }
 
 async function searchWebViaGemini(
