@@ -1,21 +1,21 @@
 /**
- * Gemini API client — calls Google Generative Language API directly via fetch.
- * The user supplies their own API key through the settings UI; the key is
- * forwarded by the API routes via the `x-gemini-key` header.
+ * AI client — calls ZAI chat for everything by default.
  *
- * FALLBACK CHAIN:
- * 1. If a Gemini API key is set AND Gemini responds successfully → use Gemini
- * 2. If Gemini fails (e.g. geo-restriction — Gemini is blocked from some server
- *    regions like Hong Kong), automatically retry via the ZAI chat completions
- *    API (which works from any region and is pre-installed in this project).
- * 3. If no key is set, fall back to deterministic mock responses so the app
- *    remains demo-able end-to-end.
+ * ARCHITECTURE:
+ * - If a Gemini API key is provided AND Gemini responds → use Gemini (for users
+ *   in non-geo-blocked regions who want Gemini specifically)
+ * - If no Gemini key OR Gemini fails → use ZAI chat (works on sandbox dev where
+ *   the session token is valid; fails on Cloudflare because the token is
+ *   session-bound to this chat's IP)
+ * - If both fail → fall back to deterministic mock responses
  *
- * The `usedFallback` flag in the response indicates when the ZAI fallback was
- * used so the UI can surface this to the user.
+ * This means: WITHOUT a Gemini key, the app fully works on the sandbox dev URL
+ * using only ZAI. On Cloudflare, both Gemini (geo-blocked from HK edge) and ZAI
+ * (session-bound token) fail, so the app uses mock responses.
  *
- * NOTE: ZAI is now called via direct HTTP (see src/lib/lead-search.ts) so it
- * works on Cloudflare's edge runtime. The z-ai-web-dev-sdk is no longer used.
+ * For a working Cloudflare deployment, either:
+ *   1. Deploy to a Node.js host in a non-geo-blocked region (Gemini works)
+ *   2. Switch to a different LLM provider (e.g., Groq — no geo-block)
  */
 
 import { zaiChatCompletion } from "@/lib/lead-search";
@@ -36,82 +36,62 @@ export async function callGemini(
   prompt: string,
   systemPrompt?: string
 ): Promise<GeminiResponse> {
-  // No key → mock mode
-  if (!apiKey) {
+  // 1) Try Gemini first IF a key is provided
+  if (apiKey) {
+    try {
+      const body: any = {
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        },
+      };
+      if (systemPrompt) {
+        body.systemInstruction = {
+          parts: [{ text: systemPrompt }],
+        };
+      }
+
+      const resp = await fetch(GEMINI_ENDPOINT(apiKey), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const text =
+          data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("\n") ?? "";
+        const trimmed = text.trim();
+        if (trimmed) {
+          return { text: trimmed, usedMock: false, usedFallback: false };
+        }
+      }
+      // Gemini failed — fall through to ZAI
+    } catch {
+      // Network error — fall through to ZAI
+    }
+  }
+
+  // 2) Try ZAI chat (works on sandbox dev; no-op on Cloudflare)
+  const zaiText = await zaiChatCompletion(prompt, systemPrompt);
+  if (zaiText) {
     return {
-      text: mockResponseFor(prompt),
-      usedMock: true,
+      text: zaiText,
+      usedMock: false,
+      usedFallback: true,
     };
   }
 
-  // Try Gemini first
-  try {
-    const body: any = {
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-      },
-    };
-    if (systemPrompt) {
-      body.systemInstruction = {
-        parts: [{ text: systemPrompt }],
-      };
-    }
-
-    const resp = await fetch(GEMINI_ENDPOINT(apiKey), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      const text =
-        data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("\n") ?? "";
-      const trimmed = text.trim();
-      if (trimmed) {
-        return { text: trimmed, usedMock: false, usedFallback: false };
-      }
-    }
-
-    // Gemini returned an error — try the ZAI fallback
-    const errText = await resp.text().catch(() => "");
-    const zaiText = await zaiChatCompletion(prompt, systemPrompt);
-    if (zaiText) {
-      return {
-        text: zaiText,
-        usedMock: false,
-        usedFallback: true,
-        error: `Gemini unavailable (HTTP ${resp.status}), used ZAI fallback. ${errText.slice(0, 120)}`,
-      };
-    }
-    return {
-      text: "",
-      usedMock: false,
-      error: `Gemini API error ${resp.status}: ${errText.slice(0, 300)}`,
-    };
-  } catch (err: any) {
-    // Network / runtime error — try the ZAI fallback
-    const zaiText = await zaiChatCompletion(prompt, systemPrompt);
-    if (zaiText) {
-      return {
-        text: zaiText,
-        usedMock: false,
-        usedFallback: true,
-        error: `Gemini network error, used ZAI fallback. ${err?.message || ""}`,
-      };
-    }
-    return {
-      text: "",
-      usedMock: false,
-      error: err?.message || String(err),
-    };
+  // 3) Both failed → mock
+  return {
+    text: mockResponseFor(prompt),
+    usedMock: true,
   }
 }
 

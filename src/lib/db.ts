@@ -1,11 +1,3 @@
-/**
- * Database client — auto-detects environment:
- * - On Cloudflare: uses getRequestContext().env.DB to get the D1 binding
- * - In local dev: uses a regular PrismaClient against the local SQLite file
- *
- * `db` is a Promise<PrismaClient> — call sites do `await (await db).lead.findMany()`
- */
-
 import { PrismaClient } from '@prisma/client'
 import { PrismaD1 } from '@prisma/adapter-d1'
 import { getOptionalRequestContext } from '@cloudflare/next-on-pages'
@@ -19,16 +11,15 @@ async function createPrismaClient(): Promise<PrismaClient> {
   try {
     const ctx = getOptionalRequestContext()
     const d1Binding = (ctx?.env as any)?.DB ?? null
-
     if (d1Binding) {
       const adapter = new PrismaD1(d1Binding)
       return new PrismaClient({ adapter } as any)
     }
   } catch {
-    // Not on Cloudflare (local dev) — fall through to SQLite
+    // Not on Cloudflare — fall through to standard PrismaClient
   }
 
-  // Local dev — standard PrismaClient against SQLite file
+  // Local dev — standard PrismaClient against SQLite file (nodejs runtime)
   return new PrismaClient({
     log: process.env.NODE_ENV !== 'production' ? ['query'] : ['error'],
   })
