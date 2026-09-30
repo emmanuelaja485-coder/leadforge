@@ -630,16 +630,16 @@ export default function Home() {
             </TabsList>
 
             <TabsContent value="discover" className="mt-0 p-4 md:p-6">
-              <DiscoverView />
+              {DiscoverView()}
             </TabsContent>
             <TabsContent value="pipeline" className="mt-0 p-4 md:p-6">
-              <PipelineView />
+              {PipelineView()}
             </TabsContent>
             <TabsContent value="automation" className="mt-0 p-4 md:p-6">
-              <AutomationView />
+              {AutomationView()}
             </TabsContent>
             <TabsContent value="settings" className="mt-0 p-4 md:p-6">
-              <SettingsView />
+              {SettingsView()}
             </TabsContent>
           </Tabs>
         </div>
@@ -661,7 +661,7 @@ export default function Home() {
       </footer>
 
       {/* Lead detail sheet */}
-      <LeadDetailSheet />
+      {LeadDetailSheet()}
 
       {/* Sub-components defined below as closures for state reuse */}
     </div>
