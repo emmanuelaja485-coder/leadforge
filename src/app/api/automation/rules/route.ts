@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/app/api/auth/me/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

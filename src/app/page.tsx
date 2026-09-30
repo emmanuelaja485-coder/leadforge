@@ -245,6 +245,15 @@ function relativeTime(iso: string): string {
 //  MAIN APP
 // ============================================================
 export default function Home() {
+  // Auth
+  const [user, setUser] = useState<{ id: string; email: string; name?: string } | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+
   const [tab, setTab] = useState<"discover" | "pipeline" | "automation" | "settings">("discover");
 
   // Discovery
@@ -289,15 +298,70 @@ export default function Home() {
   const [braveKeyInput, setBraveKeyInput] = useState("");
   const [showBraveKey, setShowBraveKey] = useState(false);
 
+  // Check auth on mount
   useEffect(() => {
-    setGeminiKeyInput(getGeminiKey());
-    setBraveKeyInput(getBraveKey());
-    refreshLeads();
-    refreshAutomation();
-    // run automation once on load
-    fetch("/api/automation/run", { method: "POST" }).then(() => refreshLeads());
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => {
+        setUser(data.user || null);
+        setAuthLoading(false);
+        if (data.user) {
+          // Already authed — load the app
+          setGeminiKeyInput(getGeminiKey());
+          setBraveKeyInput(getBraveKey());
+          refreshLeads();
+          refreshAutomation();
+          fetch("/api/automation/run", { method: "POST" }).then(() => refreshLeads());
+        }
+      })
+      .catch(() => setAuthLoading(false));
      
   }, []);
+
+  // Auth handlers
+  async function handleAuthSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!authEmail || !authPassword) return;
+    setAuthSubmitting(true);
+    try {
+      const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/signup";
+      const body = authMode === "signup"
+        ? { email: authEmail, password: authPassword, name: authName }
+        : { email: authEmail, password: authPassword };
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Authentication failed");
+        return;
+      }
+      setUser(data.user);
+      toast.success(authMode === "login" ? "Welcome back!" : "Account created — welcome!");
+      // Reset form
+      setAuthEmail("");
+      setAuthPassword("");
+      setAuthName("");
+      // Load the app
+      setGeminiKeyInput(getGeminiKey());
+      setBraveKeyInput(getBraveKey());
+      refreshLeads();
+      refreshAutomation();
+      fetch("/api/automation/run", { method: "POST" }).then(() => refreshLeads());
+    } catch (e: any) {
+      toast.error(e.message || "Authentication failed");
+    } finally {
+      setAuthSubmitting(false);
+    }
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setUser(null);
+    toast.success("Logged out");
+  }
 
   // ---------- Discovery ----------
   async function discover() {
@@ -596,6 +660,108 @@ export default function Home() {
   // ============================================================
   //  RENDER
   // ============================================================
+  // Loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="size-12 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center glow-emerald mx-auto mb-4">
+            <Zap className="size-7 text-black" strokeWidth={2.5} />
+          </div>
+          <p className="text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="size-3 animate-spin" /> Loading LeadForge…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not authed → login screen
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-foreground grid-bg p-4">
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-cyan-500/5 pointer-events-none" />
+        <div className="relative w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="size-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center glow-emerald mx-auto mb-4">
+              <Zap className="size-8 text-black" strokeWidth={2.5} />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight">LeadForge</h1>
+            <p className="text-sm text-muted-foreground mt-1">AI-Powered Lead Generation CRM</p>
+          </div>
+
+          <Card className="bg-card/50 border-border/60">
+            <CardHeader>
+              <CardTitle className="text-lg">
+                {authMode === "login" ? "Log in" : "Create your account"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleAuthSubmit} className="space-y-3">
+                {authMode === "signup" && (
+                  <div>
+                    <Label htmlFor="auth-name" className="text-xs">Name (optional)</Label>
+                    <Input
+                      id="auth-name"
+                      value={authName}
+                      onChange={(e) => setAuthName(e.target.value)}
+                      placeholder="Your name"
+                      className="h-10 bg-background/50 mt-1"
+                    />
+                  </div>
+                )}
+                <div>
+                  <Label htmlFor="auth-email" className="text-xs">Email</Label>
+                  <Input
+                    id="auth-email"
+                    type="email"
+                    required
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="h-10 bg-background/50 mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="auth-password" className="text-xs">Password <span className="text-muted-foreground">(min 6 chars)</span></Label>
+                  <Input
+                    id="auth-password"
+                    type="password"
+                    required
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="h-10 bg-background/50 mt-1"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={authSubmitting}
+                  className="w-full h-10 bg-emerald-500 hover:bg-emerald-400 text-black font-medium mt-2"
+                >
+                  {authSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
+                  {authMode === "login" ? "Log in" : "Create account"}
+                </Button>
+              </form>
+
+              <div className="text-center mt-4 text-xs text-muted-foreground">
+                {authMode === "login" ? (
+                  <>No account? <button onClick={() => setAuthMode("signup")} className="text-emerald-400 hover:underline">Sign up</button></>
+                ) : (
+                  <>Already have an account? <button onClick={() => setAuthMode("login")} className="text-emerald-400 hover:underline">Log in</button></>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <p className="text-center text-[10px] text-muted-foreground mt-4">
+            Your data is private — leads, messages, and tasks are scoped to your account.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       {/* Top bar */}
@@ -616,8 +782,14 @@ export default function Home() {
               <Sparkles className="size-3" />
               {getGeminiKey() ? "Gemini connected" : "Demo mode"}
             </Badge>
+            <Badge variant="outline" className="hidden md:inline-flex gap-1 border-emerald-500/30 text-emerald-400">
+              <CheckCircle2 className="size-3" /> {user.email}
+            </Badge>
             <Button size="sm" variant="ghost" onClick={() => setTab("settings")}>
               <Settings className="size-4" /> Settings
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleLogout} title="Log out">
+              <X className="size-4" /> Logout
             </Button>
           </div>
         </div>

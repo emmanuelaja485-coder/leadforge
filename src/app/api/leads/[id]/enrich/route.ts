@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/app/api/auth/me/route";
 import { callGemini } from "@/lib/gemini";
 import { readPage, stripHtml } from "@/lib/lead-search";
 
@@ -72,7 +73,7 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
-  const lead = await (await db).lead.findUnique({ where: { id } });
+  const lead = await (await db).lead.findUnique({ where: { id, userId: (await getCurrentUser(_req || req))?.id || "" } });
   if (!lead) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const geminiKey =

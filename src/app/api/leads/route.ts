@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/app/api/auth/me/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/leads — list leads with filters
+// GET /api/leads — list leads with filters (scoped to current user)
 export async function GET(req: NextRequest) {
+  const user = await getCurrentUser(req);
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const url = new URL(req.url);
   const status = url.searchParams.get("status") || "";
   const location = url.searchParams.get("location") || "";
@@ -15,7 +19,7 @@ export async function GET(req: NextRequest) {
   const search = url.searchParams.get("q") || "";
   const leadType = url.searchParams.get("leadType") || "";
 
-  const where: any = {};
+  const where: any = { userId: user.id };
   if (status && status !== "all") where.status = status;
   if (location) where.location = { contains: location };
   if (industry) where.industry = { contains: industry };
@@ -43,39 +47,25 @@ export async function GET(req: NextRequest) {
 
 // POST /api/leads — create lead manually (or save a confirmed discovery)
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser(req);
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const {
-    name,
-    company,
-    email,
-    phone,
-    website,
-    location,
-    industry,
-    companySize,
-    snippet,
-    score,
-    geminiSummary,
-    geminiAngle,
-    geminiWarnings,
-    geminiVerified,
-    portfolioJson,
-    status,
-    leadType,
-    bookTitle,
-    bookGenre,
-    bookThemes,
-    bookHook,
-    authorBio,
+    name, company, email, phone, website, location, industry, companySize,
+    snippet, score, geminiSummary, geminiAngle, geminiWarnings, geminiVerified,
+    portfolioJson, status, leadType, bookTitle, bookGenre, bookThemes,
+    bookHook, authorBio,
   } = body || {};
 
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
-  // Dedupe by website or email
+  // Dedupe by website or email (scoped to this user)
   const existing = await (await db).lead.findFirst({
     where: {
+      userId: user.id,
       OR: [
         ...(website ? [{ website }] : []),
         ...(email ? [{ email }] : []),
@@ -88,6 +78,7 @@ export async function POST(req: NextRequest) {
 
   const lead = await (await db).lead.create({
     data: {
+      userId: user.id,
       name,
       company: company || null,
       email: email || null,
@@ -117,20 +108,11 @@ export async function POST(req: NextRequest) {
   const due = new Date();
   due.setDate(due.getDate() + 3);
   await (await db).task.create({
-    data: {
-      leadId: lead.id,
-      title: `Follow up with ${lead.name}`,
-      type: "followup",
-      dueDate: due,
-    },
+    data: { leadId: lead.id, title: `Follow up with ${lead.name}`, type: "followup", dueDate: due },
   });
 
   await (await db).automationLog.create({
-    data: {
-      leadId: lead.id,
-      action: "auto_followup_task",
-      detail: "Created default follow-up task 3 days after lead creation.",
-    },
+    data: { leadId: lead.id, action: "auto_followup_task", detail: "Created default follow-up task 3 days after lead creation." },
   });
 
   return NextResponse.json({ lead });

@@ -9,8 +9,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  passwordHash  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  leads         Lead[]
+  automationRules AutomationRule[]
+}
+
 model Lead {
   id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name           String
   company        String?
   email          String?
@@ -47,6 +60,7 @@ model Lead {
   tasks          Task[]
   automationLogs AutomationLog[]
 
+  @@index([userId])
   @@index([status])
   @@index([location])
   @@index([industry])
@@ -79,6 +93,8 @@ model Task {
 
 model AutomationRule {
   id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   type      String // auto_enrich | auto_advance_status | auto_followup_task
   enabled   Boolean  @default(true)
@@ -86,6 +102,8 @@ model AutomationRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   logs      AutomationLog[]
+
+  @@index([userId])
 }
 
 model AutomationLog {

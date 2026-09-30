@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/app/api/auth/me/route";
 import { callGemini } from "@/lib/gemini";
 
 export const runtime = "nodejs";
@@ -186,7 +187,7 @@ export async function POST(
   }
   const geminiKey = req.headers.get("x-gemini-key") || body.geminiKey || "";
 
-  const lead = await (await db).lead.findUnique({ where: { id } });
+  const lead = await (await db).lead.findUnique({ where: { id, userId: (await getCurrentUser(_req || req))?.id || "" } });
   if (!lead) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const isAuthor = lead.leadType === "author" || body.authorMode;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/app/api/auth/me/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export async function GET(
 ) {
   const { id } = await ctx.params;
   const lead = await (await db).lead.findUnique({
-    where: { id },
+    where: { id, userId: (await getCurrentUser(_req || req))?.id || "" },
     include: { messages: { orderBy: { createdAt: "desc" } }, tasks: { orderBy: { createdAt: "desc" } } },
   });
   if (!lead) return NextResponse.json({ error: "not found" }, { status: 404 });
