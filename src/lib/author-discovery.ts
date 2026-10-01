@@ -12,6 +12,7 @@
 
 export interface AuthorLead {
   name: string;
+  company: string;
   website: string;
   email: string | null;
   phone: string | null;
@@ -103,6 +104,7 @@ async function fetchWikipediaAuthors(query: string): Promise<AuthorLead[]> {
 
         leads.push({
           name: title,
+          company: title,
           website: wikiUrl,
           email: null,
           phone: null,
@@ -192,6 +194,7 @@ async function fetchOpenLibraryAuthors(query: string): Promise<AuthorLead[]> {
 
       leads.push({
         name: authorName,
+        company: authorName,
         website: authorUrl,
         email: null,
         phone: null,
