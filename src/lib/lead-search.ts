@@ -100,10 +100,13 @@ const GEMINI_ENDPOINT = (key: string) =>
  *    geo-block, most reliable)
  * 2. If geminiKey is provided → Gemini google_search tool (works on Cloudflare
  *    since Gemini is reachable from the edge)
- * 3. ZAI web_search (sandbox dev only — returns [] on Cloudflare because the
- *    token is session-bound)
- * 4. DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere)
- * 5. If all fail → return []
+ * 3. DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere —
+ *    may be blocked by some server IPs)
+ * 4. If all fail → return []
+ *
+ * NOTE: ZAI web_search has been REMOVED from the discovery chain per user
+ * request — ZAI's session-bound token only works on sandbox dev, and the user
+ * wants leads to come from independent search engines, not from ZAI.
  */
 export async function searchWeb(
   query: string,
@@ -123,15 +126,11 @@ export async function searchWeb(
     if (geminiResults.length > 0) return geminiResults;
   }
 
-  // 3) Try ZAI web_search (sandbox dev only — returns [] on Cloudflare)
-  const zaiResults = await searchWebViaZAI(query, num);
-  if (zaiResults.length > 0) return zaiResults;
-
-  // 4) Try DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere)
+  // 3) Try DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere)
   const ddgResults = await searchWebViaDDG(query, num);
   if (ddgResults.length > 0) return ddgResults;
 
-  // 5) All failed
+  // 4) All failed
   return [];
 }
 
