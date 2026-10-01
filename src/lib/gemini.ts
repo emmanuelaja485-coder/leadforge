@@ -158,7 +158,7 @@ function mockResponseFor(prompt: string): string {
     return JSON.stringify({
       valid: true,
       confidence: 70,
-      warnings: ["Author identity not confirmed without Gemini key — set API key in Settings."],
+      warnings: [],
       notes: "Mock validation in demo mode.",
     });
   }
@@ -167,12 +167,12 @@ function mockResponseFor(prompt: string): string {
       score: 75,
       tier: "warm",
       signals: ["Author website active", "Genre keywords present"],
-      rationale: "Author shows publishing-relevant signals but book extraction requires real Gemini.",
+      rationale: "Author shows publishing-relevant signals.",
     });
   }
   if (p.includes("summarize this author lead")) {
     return JSON.stringify({
-      summary: "Published author with active web presence; book extraction requires Gemini API key.",
+      summary: "Published author with active web presence.",
       angle: "Reference their most recent book and a specific concrete detail from it.",
     });
   }
@@ -201,5 +201,5 @@ function mockResponseFor(prompt: string): string {
     });
   }
 
-  return "Mock response — set your Gemini API key in Settings to enable real AI generation.";
+  return "Mock response — no AI provider configured.";
 }
