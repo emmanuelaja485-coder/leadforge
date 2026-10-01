@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchWeb, readPage, stripHtml } from "@/lib/lead-search";
 import { callGemini } from "@/lib/gemini";
+import { discoverAuthors } from "@/lib/author-discovery";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,45 @@ export async function POST(req: NextRequest) {
   if (!query) {
     return NextResponse.json({ error: "query is required" }, { status: 400 });
   }
+
+  // ---------- AUTHOR MODE: use Wikipedia + Open Library (no Gemini) ----------
+  // Authors found via these authoritative databases are verified by definition.
+  // No AI verification needed. No Brave Search needed. No API keys needed.
+  if (leadType === "author") {
+    try {
+      const authorLeads = await discoverAuthors(query, location);
+
+      if (authorLeads.length === 0) {
+        return NextResponse.json({
+          query,
+          leadType,
+          total: 0,
+          leads: [],
+          warning:
+            "No authors found for this query. Try a different subject (e.g. 'history', 'scifi', 'biography').",
+        });
+      }
+
+      return NextResponse.json({
+        query,
+        leadType,
+        total: authorLeads.length,
+        leads: authorLeads,
+        sources: ["wikipedia", "open_library"],
+      });
+    } catch (err: any) {
+      console.error("Author discovery failed:", err);
+      return NextResponse.json(
+        {
+          error: "Author discovery failed",
+          message: err.message,
+        },
+        { status: 500 }
+      );
+    }
+  }
+
+  // ---------- E-COMMERCE MODE: original Brave/Gemini flow ----------
 
   // Build a richer query
   const augmented = leadType === "author"
