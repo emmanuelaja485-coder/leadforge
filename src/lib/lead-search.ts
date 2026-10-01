@@ -96,17 +96,14 @@ const GEMINI_ENDPOINT = (key: string) =>
  * Search the web for lead candidates using a multi-engine fallback chain.
  *
  * FALLBACK CHAIN (tries each in order until one returns results):
- * 1. If braveKey is provided → Brave Search API (2000 queries/month free, no
- *    geo-block, most reliable)
- * 2. If geminiKey is provided → Gemini google_search tool (works on Cloudflare
- *    since Gemini is reachable from the edge)
- * 3. DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere —
- *    may be blocked by some server IPs)
- * 4. If all fail → return []
- *
- * NOTE: ZAI web_search has been REMOVED from the discovery chain per user
- * request — ZAI's session-bound token only works on sandbox dev, and the user
- * wants leads to come from independent search engines, not from ZAI.
+ * 1. ZAI web_search — PRIMARY source of leads (per user request). Works on
+ *    sandbox dev where the session token is valid. Returns [] on Cloudflare
+ *    (token is session-bound).
+ * 2. If braveKey is provided → Brave Search API (2000 queries/month free, no
+ *    geo-block)
+ * 3. If geminiKey is provided → Gemini google_search tool
+ * 4. DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere)
+ * 5. If all fail → return []
  */
 export async function searchWeb(
   query: string,
@@ -114,23 +111,27 @@ export async function searchWeb(
   geminiKey?: string | null,
   braveKey?: string | null
 ): Promise<RawSearchResult[]> {
-  // 1) Try Brave Search API first (most reliable)
+  // 1) Try ZAI web_search FIRST (primary source — sandbox dev only)
+  const zaiResults = await searchWebViaZAI(query, num);
+  if (zaiResults.length > 0) return zaiResults;
+
+  // 2) Try Brave Search API
   if (braveKey) {
     const braveResults = await searchWebViaBrave(query, num, braveKey);
     if (braveResults.length > 0) return braveResults;
   }
 
-  // 2) Try Gemini google_search
+  // 3) Try Gemini google_search
   if (geminiKey) {
     const geminiResults = await searchWebViaGemini(query, num, geminiKey);
     if (geminiResults.length > 0) return geminiResults;
   }
 
-  // 3) Try DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere)
+  // 4) Try DuckDuckGo HTML scraping (no key, no rate limit, works from anywhere)
   const ddgResults = await searchWebViaDDG(query, num);
   if (ddgResults.length > 0) return ddgResults;
 
-  // 4) All failed
+  // 5) All failed
   return [];
 }
 
