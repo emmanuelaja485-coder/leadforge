@@ -1060,7 +1060,7 @@ export default function Home() {
                 <BookOpen className="size-3" /> {lead.bookGenre || "Unknown genre"}
               </div>
               <p className="text-sm font-semibold text-violet-100 truncate mt-0.5">
-                {lead.bookTitle || "(book title not extracted — set Gemini key)"}
+                {lead.bookTitle || "(book title not available)"}
               </p>
               {lead.bookThemes && lead.bookThemes.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
@@ -1112,9 +1112,15 @@ export default function Home() {
               <span>{lead.warnings[0]}</span>
             </div>
           )}
-          {lead.usedMock && (
+          {lead.verified && !lead.usedMock && (
+            <div className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded px-1.5 py-0.5 flex items-center gap-1">
+              <Check className="size-2.5" />
+              Verified lead
+            </div>
+          )}
+          {lead.usedMock && !lead.verified && (
             <div className="text-[10px] text-muted-foreground bg-muted/30 rounded px-1.5 py-0.5">
-              Mock AI response (set Gemini key for real)
+              Demo data
             </div>
           )}
           <Button
